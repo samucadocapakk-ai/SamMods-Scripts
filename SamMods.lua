@@ -559,12 +559,48 @@ end
 -- inteira toda hora; só re-escaneia se o objeto sumir.
 local tokensLabelCache = nil
 
+-- Caminho exato confirmado no Explorer do jogo:
+-- PlayerGui > HUD > Spendables > TokenRow > Tokens
+-- Tentamos esse caminho primeiro (rápido e sem ambiguidade).
+-- Se não existir (nome mudou, versão diferente do jogo, etc),
+-- caímos pra busca genérica por qualquer texto com "token".
+local function encontrarPorCaminhoExato()
+
+	local hud = PlayerGui:FindFirstChild("HUD")
+	if not hud then return nil end
+
+	local spendables = hud:FindFirstChild("Spendables")
+	if not spendables then return nil end
+
+	local tokenRow = spendables:FindFirstChild("TokenRow")
+	if not tokenRow then return nil end
+
+	local tokensLabel = tokenRow:FindFirstChild("Tokens")
+	if not tokensLabel then return nil end
+
+	if tokensLabel:IsA("TextLabel") or tokensLabel:IsA("TextButton") then
+		return tokensLabel
+	end
+
+	return nil
+
+end
+
 local function encontrarLabelDeTokens()
 
 	if tokensLabelCache and tokensLabelCache.Parent then
 		return tokensLabelCache
 	end
 
+	local porCaminho = encontrarPorCaminhoExato()
+
+	if porCaminho then
+		tokensLabelCache = porCaminho
+		return porCaminho
+	end
+
+	-- Reserva: busca genérica por qualquer texto com "token",
+	-- caso o caminho exato não exista por algum motivo.
 	for _, obj in ipairs(PlayerGui:GetDescendants()) do
 
 		if (obj:IsA("TextLabel") or obj:IsA("TextButton"))
