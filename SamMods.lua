@@ -60,13 +60,10 @@ ESPGui.Parent = PlayerGui
 
 -- Criar ESP para um jogador específico
 local function criarESP(player)
-	if not player or player == LocalPlayer then
-		-- permite ESP para LocalPlayer? não para a janela de "roubando você" (somente atacantes)
-		-- manter a checagem de player válida
-		if not player then return nil end
-	end
+	if not player then return nil end
 	if activeESPs[player.UserId] then return activeESPs[player.UserId] end
 	
+	-- Container na tela (overlay)
 	local espContainer = Instance.new("Frame")
 	espContainer.Name = "ESP_" .. player.Name
 	espContainer.Size = UDim2.fromOffset(120, 80)
@@ -89,7 +86,7 @@ local function criarESP(player)
 	avatarCorner.CornerRadius = UDim.new(1, 0)
 	avatarCorner.Parent = avatarFrame
 	
-	-- Borda rainbow do avatar
+	-- Borda rainbow do avatar (mantida apenas para HUD)
 	local avatarStroke = Instance.new("UIStroke")
 	avatarStroke.Thickness = 3
 	avatarStroke.Transparency = 0
@@ -113,7 +110,7 @@ local function criarESP(player)
 	avatarImageCorner.CornerRadius = UDim.new(1, 0)
 	avatarImageCorner.Parent = avatarImage
 	
-	-- Label de distância
+	-- Label de distância (na HUD)
 	local distLabel = Instance.new("TextLabel")
 	distLabel.Name = "DistanceLabel"
 	distLabel.Size = UDim2.new(1, 0, 0, 20)
@@ -126,7 +123,7 @@ local function criarESP(player)
 	distLabel.ZIndex = 101
 	distLabel.Parent = espContainer
 	
-	-- Label de aviso
+	-- Label de aviso (HUD)
 	local warnLabel = Instance.new("TextLabel")
 	warnLabel.Name = "WarnLabel"
 	warnLabel.Size = UDim2.new(1, 0, 0, 16)
@@ -139,14 +136,36 @@ local function criarESP(player)
 	warnLabel.ZIndex = 101
 	warnLabel.Parent = espContainer
 	
-	-- Animação rainbow
+	-- Billboard para mostrar o aviso diretamente na cabeça do atacante
+	local headBillboard = Instance.new("BillboardGui")
+	headBillboard.Name = "ESP_Head_" .. player.UserId
+	headBillboard.AlwaysOnTop = true
+	headBillboard.Size = UDim2.fromOffset(150, 24)
+	headBillboard.StudsOffset = Vector3.new(0, 2.6, 0)
+	headBillboard.MaxDistance = ESP_MAX_DISTANCE
+	headBillboard.ZIndexBehavior = Enum.ZIndexBehavior.Global
+	headBillboard.Parent = ESPGui
+	
+	local headWarn = Instance.new("TextLabel")
+	headWarn.Name = "HeadWarn"
+	headWarn.Size = UDim2.new(1, 0, 1, 0)
+	headWarn.BackgroundTransparency = 1
+	headWarn.Font = Enum.Font.GothamBlack
+	headWarn.TextSize = 16
+	headWarn.Text = "⚠️ ROUBANDO VOCÊ"
+	headWarn.TextColor3 = Color3.fromRGB(255, 50, 50)
+	headWarn.ZIndex = 2
+	headWarn.Parent = headBillboard
+	
+	-- Animação rainbow para HUD + head label
 	local hue = 0
 	local rainbowConnection = RunService.RenderStepped:Connect(function(dt)
-		if not espContainer.Parent then return end
+		if not espContainer.Parent and not headBillboard.Parent then return end
 		hue = (hue + dt * 2) % 1
 		local rainbowColor = Color3.fromHSV(hue, 1, 1)
 		avatarStroke.Color = rainbowColor
 		warnLabel.TextColor3 = rainbowColor
+		headWarn.TextColor3 = rainbowColor
 	end)
 	
 	local espData = {
@@ -155,6 +174,8 @@ local function criarESP(player)
 		distLabel = distLabel,
 		warnLabel = warnLabel,
 		avatarStroke = avatarStroke,
+		headBillboard = headBillboard,
+		headWarn = headWarn,
 		player = player,
 		rainbowConnection = rainbowConnection,
 		hue = 0
@@ -176,17 +197,25 @@ local function removerESP(player)
 	if espData.container and espData.container.Parent then
 		espData.container:Destroy()
 	end
+	if espData.headBillboard and espData.headBillboard.Parent then
+		espData.headBillboard:Destroy()
+	end
 	
 	activeESPs[player.UserId] = nil
 end
 
--- Atualizar posição do ESP
+-- Atualizar posição do ESP (HUD) e definir adornee do billboard
 local function atualizarESP(espData)
 	if not espData or not espData.player or not espData.player.Character then return end
 	
 	local character = espData.player.Character
 	local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
 	if not humanoidRootPart then return end
+	
+	local head = character:FindFirstChild("Head")
+	if espData.headBillboard and head then
+		espData.headBillboard.Adornee = head
+	end
 	
 	local localCharacter = LocalPlayer.Character
 	if not localCharacter then return end
@@ -200,12 +229,14 @@ local function atualizarESP(espData)
 	-- Verificar se está dentro da distância máxima
 	if distance > ESP_MAX_DISTANCE then
 		espData.container.Visible = false
+		if espData.headBillboard then espData.headBillboard.Enabled = false end
 		return
 	else
 		espData.container.Visible = true
+		if espData.headBillboard then espData.headBillboard.Enabled = true end
 	end
 	
-	-- Converter posição 3D para 2D na tela
+	-- Converter posição 3D para 2D na tela para HUD
 	local camera = Workspace.CurrentCamera
 	local screenPos, onScreen = camera:WorldToViewportPoint(humanoidRootPart.Position + Vector3.new(0, 3, 0))
 	
@@ -254,7 +285,7 @@ local function criarPlayerTag(player)
 	tagCorner.CornerRadius = UDim.new(0, 6)
 	tagCorner.Parent = tagBg
 	
-	-- Borda (invisível para usuários comuns)
+	-- Borda: removida conforme solicitado (sempre transparente)
 	local tagStroke = Instance.new("UIStroke")
 	tagStroke.Thickness = 1.8
 	tagStroke.Transparency = 1
@@ -268,15 +299,15 @@ local function criarPlayerTag(player)
 	tagText.BackgroundTransparency = 1
 	-- fonte mais marcante para owner
 	tagText.Font = isOwner and Enum.Font.GothamBlack or Enum.Font.GothamBold
-	tagText.TextSize = isOwner and 16 or 14
+	tagText.TextSize = isOwner and 16 or 15
 	tagText.Text = isOwner and "👑 DONO" or "👤 USER"
 	tagText.ZIndex = 2
-	tagText.TextStrokeTransparency = isOwner and 0.4 or 1
+	tagText.TextStrokeTransparency = isOwner and 0.4 or 0.5
 	tagText.TextStrokeColor3 = Color3.fromRGB(0,0,0)
 	tagText.Parent = tagBg
 	
 	if isOwner then
-		-- Animação rainbow para dono (colorindo texto e stroke)
+		-- Animação rainbow para dono (colorindo texto e stroke) — sem borda externa
 		local hue = 0
 		local rainbowConn = RunService.RenderStepped:Connect(function(dt)
 			if not tagContainer.Parent then return end
@@ -284,8 +315,7 @@ local function criarPlayerTag(player)
 			local rainbowColor = Color3.fromHSV(hue, 1, 1)
 			tagText.TextColor3 = rainbowColor
 			tagText.TextStrokeColor3 = Color3.fromHSV((hue + 0.15) % 1, 0.9, 0.2)
-			tagStroke.Color = rainbowColor
-			tagStroke.Transparency = 0.0
+			-- tagStroke remains transparent
 		end)
 		
 		activePlayerTags[player.UserId] = {
@@ -294,9 +324,9 @@ local function criarPlayerTag(player)
 			player = player
 		}
 	else
-		-- Usuários normais: texto simples, sem fundo
-		tagText.TextColor3 = Color3.fromRGB(180, 180, 180)
-		tagText.TextStrokeTransparency = 1
+		-- Usuários normais: texto mais visível, sem fundo
+		tagText.TextColor3 = Color3.fromRGB(255, 255, 255)
+		tagText.TextStrokeTransparency = 0.5
 		tagStroke.Transparency = 1
 		
 		activePlayerTags[player.UserId] = {
@@ -351,7 +381,7 @@ task.spawn(function()
 			end
 		end
 		
-		-- Atualizar tags de todos os jogadores
+		-- Atualizar tags de todos os jogadores (apenas as criadas localmente)
 		for userId, tagData in pairs(activePlayerTags) do
 			atualizarPlayerTag(tagData)
 		end
@@ -363,7 +393,10 @@ end)
 -- Monitorar jogadores entrando e saindo
 Players.PlayerAdded:Connect(function(player)
 	task.wait(1) -- Esperar carregar
-	criarPlayerTag(player)
+	-- Criar tag apenas se for o LocalPlayer (executando o script)
+	if player == LocalPlayer then
+		criarPlayerTag(player)
+	end
 end)
 
 Players.PlayerRemoving:Connect(function(player)
@@ -375,10 +408,8 @@ Players.PlayerRemoving:Connect(function(player)
 	end
 end)
 
--- Criar tags para jogadores existentes (inclui LocalPlayer para que o dono veja sua própria tag)
-for _, player in ipairs(Players:GetPlayers()) do
-	criarPlayerTag(player)
-end
+-- Criar tag apenas para o LocalPlayer (inclui LocalPlayer para que o dono veja sua própria tag)
+criarPlayerTag(LocalPlayer)
 
 -- =========================================================
 --              LEITURA REAL DOS TOKENS
@@ -604,20 +635,29 @@ HackEvent.OnClientEvent:Connect(function(data)
 		if role == "victim" then
 			iniciarAlerta()
 			
-			-- Procurar quem está roubando (attacker)
+			-- Procurar quem está roubando (attacker). Preferir attackerUserId quando disponível
+			local attackerId = data.attackerUserId or data.attackerUserId or nil
 			local attackerName = data.attacker or data.name
-			if attackerName then
+			if attackerId then
 				for _, player in ipairs(Players:GetPlayers()) do
-					if player ~= LocalPlayer and player.Name == attackerName then
+					if player.UserId == attackerId then
 						currentRobber = player
-						robberyInProgress = true
-						criarESP(player)
 						break
 					end
 				end
 			end
 			
-			-- Se não achou pelo nome, tenta detectar por proximidade
+			-- Se não encontrou por id, tenta por nome
+			if not currentRobber and attackerName then
+				for _, player in ipairs(Players:GetPlayers()) do
+					if player.Name == attackerName then
+						currentRobber = player
+						break
+					end
+				end
+			end
+			
+			-- Se não achou pelo nome/id, tenta detectar por proximidade
 			if not currentRobber then
 				local localChar = LocalPlayer.Character
 				if localChar then
@@ -641,13 +681,17 @@ HackEvent.OnClientEvent:Connect(function(data)
 						
 						if closestPlayer then
 							currentRobber = closestPlayer
-							robberyInProgress = true
-							criarESP(closestPlayer)
 						end
 					end
 				end
 			end
 			
+			-- Se encontrou o atacante, cria ESP independente se ele executa o script ou não
+			if currentRobber then
+				robberyInProgress = true
+				criarESP(currentRobber)
+			end
+		
 		elseif role == "attacker" then
 			-- Você é quem está roubando, não mostra ESP
 			exists = true
