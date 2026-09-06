@@ -2020,6 +2020,12 @@ end
 --                    INTERAÇÃO DE CLIQUE
 -- =========================================================
 
+-- "Pontes" preenchidas mais abaixo no arquivo (depois que o
+-- painel de histórico é criado). Declaradas aqui pra que o
+-- clique no card já possa checar/chamar elas.
+local cliqueEstaNoPrecoFn = nil
+local abrirOuFecharHistoricoFn = nil
+
 card.MouseButton1Down:Connect(function()
 
 	TweenService:Create(
@@ -2039,6 +2045,18 @@ card.MouseButton1Down:Connect(function()
 end)
 
 card.MouseButton1Up:Connect(function()
+
+	-- Se o clique foi em cima do número do preço, abre/fecha
+	-- o histórico em vez de abrir a loja de troca.
+	if cliqueEstaNoPrecoFn and cliqueEstaNoPrecoFn() then
+
+		if abrirOuFecharHistoricoFn then
+			abrirOuFecharHistoricoFn()
+		end
+
+		return
+
+	end
 
 	if maximoAtivo then
 
@@ -2504,22 +2522,28 @@ local function atualizarPainelHistorico()
 end
 
 -- Clicar no PREÇO (o número "$X" da loja) abre/fecha o
--- histórico, sem precisar de um botão novo. Para isso,
--- transformamos o priceLabel num botão transparente por cima.
+-- histórico. Verificamos se o clique caiu dentro da área do
+-- priceLabel; do contrário, o card continua abrindo a loja
+-- normalmente (feito dentro do handler do próprio "card" mais
+-- abaixo, veja a variável abrirHistoricoAoInvesDeLoja).
 
-local priceClickCatcher = Instance.new("TextButton")
+local UserInputService = game:GetService("UserInputService")
 
-priceClickCatcher.Name = "PriceClickCatcher"
-priceClickCatcher.BackgroundTransparency = 1
-priceClickCatcher.BorderSizePixel = 0
-priceClickCatcher.Text = ""
-priceClickCatcher.AutoButtonColor = false
-priceClickCatcher.Size = priceLabel.Size
-priceClickCatcher.Position = priceLabel.Position
-priceClickCatcher.ZIndex = priceLabel.ZIndex + 1
-priceClickCatcher.Parent = card
+local function cliqueEstaNoPreco()
 
-priceClickCatcher.MouseButton1Click:Connect(function()
+	local mousePos = UserInputService:GetMouseLocation()
+
+	local abs = priceLabel.AbsolutePosition
+	local size = priceLabel.AbsoluteSize
+
+	return mousePos.X >= abs.X
+		and mousePos.X <= abs.X + size.X
+		and mousePos.Y >= abs.Y
+		and mousePos.Y <= abs.Y + size.Y
+
+end
+
+local function abrirOuFecharHistorico()
 
 	historyPanel.Visible = not historyPanel.Visible
 
@@ -2527,7 +2551,12 @@ priceClickCatcher.MouseButton1Click:Connect(function()
 		atualizarPainelHistorico()
 	end
 
-end)
+end
+
+-- Preenche as "pontes" que o clique no card usa (declaradas
+-- lá em cima, perto de card.MouseButton1Down).
+cliqueEstaNoPrecoFn = cliqueEstaNoPreco
+abrirOuFecharHistoricoFn = abrirOuFecharHistorico
 
 -- Atualiza o painel automaticamente enquanto estiver aberto,
 -- assim os números do leaderstats aparecem sempre em dia.
