@@ -1464,7 +1464,7 @@ notificationText.Parent =
 local function enviarMensagemChat()
 
 	local mensagem =
-		"🌈✨ [LOJA] O PREÇO MÁXIMO CHEGOU! 🤑💎 Tokens por $15! 🔥🛍️ CORRE PRA APROVEITAR! ✨"
+		"🌈 Loja: preço dos tokens está no máximo"
 
 	if TextChatService.ChatVersion ==
 		Enum.ChatVersion.TextChatService then
@@ -2338,6 +2338,102 @@ local function formatNumber(number)
 end
 
 -- =========================================================
+--        LEITURA DIRETA DO VALOR "VENDER TODOS POR $X"
+-- =========================================================
+-- Em vez de calcular tokenAmount * preço por conta própria
+-- (que pode ter diferenças de arredondamento), lemos direto o
+-- texto do botão que o próprio jogo já calculou, no caminho:
+-- PlayerGui > TokenExchangeUI > Panel > Content > Body >
+-- SellAll > Label
+--
+-- Esse objeto só existe DEPOIS que o jogador abre o menu de
+-- troca de tokens pela primeira vez (o jogo cria ele on-demand).
+-- Por isso usamos FindFirstChild (não WaitForChild) e caímos
+-- no cálculo manual se ainda não existir.
+
+local function encontrarLabelSellAll()
+
+	local ui = PlayerGui:FindFirstChild("TokenExchangeUI")
+	if not ui then return nil end
+
+	local panel = ui:FindFirstChild("Panel")
+	if not panel then return nil end
+
+	local content = panel:FindFirstChild("Content")
+	if not content then return nil end
+
+	local body = content:FindFirstChild("Body")
+	if not body then return nil end
+
+	local sellAll = body:FindFirstChild("SellAll")
+	if not sellAll then return nil end
+
+	local label = sellAll:FindFirstChild("Label")
+
+	if label and (label:IsA("TextLabel") or label:IsA("TextButton")) then
+		return label
+	end
+
+	-- Caso o texto esteja direto no próprio botão (sem filho
+	-- "Label"), tenta ler dali também.
+	if sellAll:IsA("TextButton") then
+		return sellAll
+	end
+
+	return nil
+
+end
+
+-- Extrai o número depois do "$" no texto do botão (funciona
+-- com "VENDER TODOS POR $ 266.3B", "SELL ALL FOR $ 5.2T", etc).
+local function extrairValorAposCifrao(texto)
+
+	if not texto then
+		return nil
+	end
+
+	local numeroStr, sufixo =
+		texto:match("%$%s*(%-?%d+[%.,]?%d*)%s*(%a*)")
+
+	if not numeroStr then
+		return nil
+	end
+
+	numeroStr = numeroStr:gsub(",", ".")
+
+	local numero = tonumber(numeroStr)
+
+	if not numero then
+		return nil
+	end
+
+	local multiplicador = UNIDADES_REVERSO[sufixo]
+
+	if multiplicador then
+		return numero * multiplicador
+	end
+
+	if sufixo == "" or sufixo == nil then
+		return numero
+	end
+
+	return nil
+
+end
+
+local function lerValorReceberDoJogo()
+
+	local label = encontrarLabelSellAll()
+
+	if not label then
+		return nil
+	end
+
+	return extrairValorAposCifrao(label.Text)
+
+end
+
+-- =========================================================
 --                     ATUALIZAR DISPLAY
 -- =========================================================
 
@@ -2359,11 +2455,16 @@ local function updateDisplay()
 	local tokenAmount =
 		lerQuantidadeTokens()
 
-	-- "valorReceber" usa o preço EXATO (com decimais), igual
-	-- o jogo faz na hora de vender, para bater certinho com o
-	-- valor mostrado no modal "Vender todos por $X".
+	-- Tenta pegar o valor exato que o PRÓPRIO JOGO já calculou
+	-- (lendo o texto do botão "Vender todos por $X"). Só cai no
+	-- cálculo manual (tokenAmount * preço) se esse texto ainda
+	-- não existir (jogador nunca abriu o menu de troca).
 	local valorReceber =
-		tokenAmount * rawPrice
+		lerValorReceberDoJogo()
+
+	if not valorReceber then
+		valorReceber = tokenAmount * rawPrice
+	end
 
 	earningsLabel.Text =
 		("💎 Tokens: %s  •  💰 Receber: $%s"):format(
