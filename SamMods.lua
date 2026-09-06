@@ -636,13 +636,6 @@ end
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 
--- Módulo de fórmulas de hack do próprio jogo (só leitura, não
--- usamos isso pra automatizar nada — apenas pra mostrar pra
--- você uma estimativa de "chance de defesa").
-local HackMathOk, HackMath = pcall(function()
-	return require(Shared:WaitForChild("HackMath", 5))
-end)
-
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 
 local OpenTokenExchange = Remotes:FindFirstChild("OpenTokenExchange")
@@ -1013,117 +1006,39 @@ timerLabel.ZIndex = 5
 timerLabel.Parent = card
 
 -- =========================================================
---         INDICADOR DE "CHANCE DE DEFESA" (INFORMATIVO)
+--            BOTÃO DE ABRIR/FECHAR HISTÓRICO
 -- =========================================================
--- Mostra, usando a mesma fórmula do jogo (HackMath.chance),
--- qual seria a chance de sucesso de alguém com HABILIDADE
--- IGUAL À SUA tentando te hackear agora. Isso NÃO automatiza
--- nada, é só uma estimativa pra você saber o quão vulnerável
--- está — não sabemos o nível real de quem for te atacar.
+-- Botão dedicado (no lugar de onde ficava o badge de "chance
+-- de defesa"). Antes o histórico só abria clicando num pixel
+-- exato do priceLabel, o que era pouco confiável. Agora é só
+-- clicar aqui.
 
-local defenseBadge = Instance.new("Frame")
+local historyButton = Instance.new("TextButton")
 
-defenseBadge.Name = "DefenseBadge"
-defenseBadge.AnchorPoint = Vector2.new(1, 0)
-defenseBadge.Position = UDim2.new(1, -16, 0, 168)
-defenseBadge.Size = UDim2.fromOffset(150, 22)
-defenseBadge.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
-defenseBadge.BackgroundTransparency = 0.25
-defenseBadge.BorderSizePixel = 0
-defenseBadge.Parent = screenGui
+historyButton.Name = "HistoryToggleButton"
+historyButton.AnchorPoint = Vector2.new(1, 0)
+historyButton.Position = UDim2.new(1, -16, 0, 168)
+historyButton.Size = UDim2.fromOffset(150, 22)
+historyButton.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
+historyButton.BackgroundTransparency = 0.25
+historyButton.BorderSizePixel = 0
+historyButton.AutoButtonColor = false
+historyButton.Font = Enum.Font.GothamBold
+historyButton.TextSize = 11
+historyButton.TextColor3 = Color3.fromRGB(230, 235, 245)
+historyButton.Text = "📊 Histórico"
+historyButton.ZIndex = 5
+historyButton.Parent = screenGui
 
-local defenseBadgeCorner = Instance.new("UICorner")
-defenseBadgeCorner.CornerRadius = UDim.new(0, 8)
-defenseBadgeCorner.Parent = defenseBadge
+local historyButtonCorner = Instance.new("UICorner")
+historyButtonCorner.CornerRadius = UDim.new(0, 8)
+historyButtonCorner.Parent = historyButton
 
-local defenseBadgeStroke = Instance.new("UIStroke")
-defenseBadgeStroke.Color = Color3.fromRGB(90, 160, 255)
-defenseBadgeStroke.Transparency = 0.6
-defenseBadgeStroke.Thickness = 1
-defenseBadgeStroke.Parent = defenseBadge
-
-local defenseLabel = Instance.new("TextLabel")
-defenseLabel.Name = "DefenseLabel"
-defenseLabel.Size = UDim2.new(1, -12, 1, 0)
-defenseLabel.Position = UDim2.new(0, 6, 0, 0)
-defenseLabel.BackgroundTransparency = 1
-defenseLabel.Font = Enum.Font.GothamBold
-defenseLabel.TextSize = 11
-defenseLabel.TextColor3 = Color3.fromRGB(230, 235, 245)
-defenseLabel.TextXAlignment = Enum.TextXAlignment.Left
-defenseLabel.Text = "🛡️ Defesa: --"
-defenseLabel.ZIndex = 5
-defenseLabel.Parent = defenseBadge
-
--- Nomes candidatos pro atributo que guarda seu nível de
--- segurança. Se o nome real for outro, é só adicionar aqui.
-local SECURITY_ATTRIBUTE_CANDIDATES = {
-	"SecurityLevel",
-	"Security",
-	"DefenseLevel",
-	"Defense",
-	"HackDefense",
-	"Firewall",
-	"FirewallLevel",
-}
-
-local defenseWarningShown = false
-
-local function lerNivelSeguranca()
-
-	for _, nome in ipairs(SECURITY_ATTRIBUTE_CANDIDATES) do
-
-		local valor = LocalPlayer:GetAttribute(nome)
-
-		if typeof(valor) == "number" then
-			return valor
-		end
-
-	end
-
-	return nil
-
-end
-
-local function atualizarDefesaBadge()
-
-	if not HackMathOk or not HackMath then
-		defenseLabel.Text = "🛡️ Defesa: indisponível"
-		return
-	end
-
-	local securityLevel = lerNivelSeguranca()
-
-	if not securityLevel then
-
-		if not defenseWarningShown then
-			defenseWarningShown = true
-			warn("[TokenPriceWatcher] Não achei o atributo de nível de segurança. Ajuste SECURITY_ATTRIBUTE_CANDIDATES com o nome certo.")
-		end
-
-		defenseLabel.Text = "🛡️ Defesa: N/D"
-		return
-
-	end
-
-	-- Assume um atacante com habilidade IGUAL à sua própria
-	-- segurança (não temos como saber o nível real de quem
-	-- for te atacar). É só uma referência aproximada.
-	local ok, chanceAtaque = pcall(function()
-		return HackMath.chance(securityLevel, securityLevel, 1)
-	end)
-
-	if not ok or typeof(chanceAtaque) ~= "number" then
-		defenseLabel.Text = "🛡️ Defesa: erro"
-		return
-	end
-
-	local chanceDefesa = math.clamp(1 - chanceAtaque, 0, 1) * 100
-
-	defenseLabel.Text =
-		("🛡️ Defesa: %d%%"):format(math.floor(chanceDefesa + 0.5))
-
-end
+local historyButtonStroke = Instance.new("UIStroke")
+historyButtonStroke.Color = Color3.fromRGB(140, 110, 230)
+historyButtonStroke.Transparency = 0.6
+historyButtonStroke.Thickness = 1
+historyButtonStroke.Parent = historyButton
 
 -- =========================================================
 --                         BADGE
@@ -2020,12 +1935,6 @@ end
 --                    INTERAÇÃO DE CLIQUE
 -- =========================================================
 
--- "Pontes" preenchidas mais abaixo no arquivo (depois que o
--- painel de histórico é criado). Declaradas aqui pra que o
--- clique no card já possa checar/chamar elas.
-local cliqueEstaNoPrecoFn = nil
-local abrirOuFecharHistoricoFn = nil
-
 card.MouseButton1Down:Connect(function()
 
 	TweenService:Create(
@@ -2045,18 +1954,6 @@ card.MouseButton1Down:Connect(function()
 end)
 
 card.MouseButton1Up:Connect(function()
-
-	-- Se o clique foi em cima do número do preço, abre/fecha
-	-- o histórico em vez de abrir a loja de troca.
-	if cliqueEstaNoPrecoFn and cliqueEstaNoPrecoFn() then
-
-		if abrirOuFecharHistoricoFn then
-			abrirOuFecharHistoricoFn()
-		end
-
-		return
-
-	end
 
 	if maximoAtivo then
 
@@ -2405,7 +2302,7 @@ local historyPanel = Instance.new("Frame")
 
 historyPanel.Name = "HistoryPanel"
 historyPanel.AnchorPoint = Vector2.new(1, 0)
-historyPanel.Position = UDim2.new(1, -16, 0, 168)
+historyPanel.Position = UDim2.new(1, -16, 0, 196)
 historyPanel.Size = UDim2.fromOffset(200, 140)
 historyPanel.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
 historyPanel.BackgroundTransparency = 0.1
@@ -2521,28 +2418,6 @@ local function atualizarPainelHistorico()
 
 end
 
--- Clicar no PREÇO (o número "$X" da loja) abre/fecha o
--- histórico. Verificamos se o clique caiu dentro da área do
--- priceLabel; do contrário, o card continua abrindo a loja
--- normalmente (feito dentro do handler do próprio "card" mais
--- abaixo, veja a variável abrirHistoricoAoInvesDeLoja).
-
-local UserInputService = game:GetService("UserInputService")
-
-local function cliqueEstaNoPreco()
-
-	local mousePos = UserInputService:GetMouseLocation()
-
-	local abs = priceLabel.AbsolutePosition
-	local size = priceLabel.AbsoluteSize
-
-	return mousePos.X >= abs.X
-		and mousePos.X <= abs.X + size.X
-		and mousePos.Y >= abs.Y
-		and mousePos.Y <= abs.Y + size.Y
-
-end
-
 local function abrirOuFecharHistorico()
 
 	historyPanel.Visible = not historyPanel.Visible
@@ -2553,10 +2428,7 @@ local function abrirOuFecharHistorico()
 
 end
 
--- Preenche as "pontes" que o clique no card usa (declaradas
--- lá em cima, perto de card.MouseButton1Down).
-cliqueEstaNoPrecoFn = cliqueEstaNoPreco
-abrirOuFecharHistoricoFn = abrirOuFecharHistorico
+historyButton.MouseButton1Click:Connect(abrirOuFecharHistorico)
 
 -- Atualiza o painel automaticamente enquanto estiver aberto,
 -- assim os números do leaderstats aparecem sempre em dia.
@@ -2856,8 +2728,6 @@ task.spawn(function()
 
 		updateDisplay()
 
-		atualizarDefesaBadge()
-
 		task.wait(0.5)
 
 	end
@@ -2894,4 +2764,3 @@ end)
 -- =========================================================
 
 updateDisplay()
-atualizarDefesaBadge()
