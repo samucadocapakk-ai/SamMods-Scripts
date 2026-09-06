@@ -463,13 +463,32 @@ end
 -- =========================================================
 --              LEITURA REAL DOS TOKENS
 -- =========================================================
--- Em vez de depender só do atributo "Tokens" (que pode não
--- existir ou não bater com o que a interface do jogo mostra),
--- procuramos em TODA a interface (PlayerGui) por um texto que
--- contenha "Tokens" e leia o valor escrito nele, seja um
--- número normal (264, 75) ou abreviado (2.54T, 691.4B, etc).
--- Isso deixa o script robusto contra qualquer formato que o
--- jogo use, sem precisar caçar o caminho exato do texto.
+-- Lê direto do texto que o próprio jogo já mostra, no caminho
+-- exato confirmado no Explorer:
+-- PlayerGui > HUD > Spendables > TokenRow > Tokens
+-- Usamos WaitForChild pra esperar cada parte carregar (com
+-- timeout de segurança), sem ficar caçando em outro lugar.
+
+local tokensLabel
+
+do
+
+	local ok, resultado = pcall(function()
+
+		local hud = PlayerGui:WaitForChild("HUD", 10)
+		local spendables = hud:WaitForChild("Spendables", 10)
+		local tokenRow = spendables:WaitForChild("TokenRow", 10)
+		return tokenRow:WaitForChild("Tokens", 10)
+
+	end)
+
+	if ok then
+		tokensLabel = resultado
+	else
+		warn("[TokenPriceWatcher] Não encontrei PlayerGui.HUD.Spendables.TokenRow.Tokens: " .. tostring(resultado))
+	end
+
+end
 
 -- Tabela de conversão: abreviação -> multiplicador real.
 -- Baseada nas mesmas abreviações que usamos pra EXIBIR os
@@ -497,27 +516,8 @@ local UNIDADES_REVERSO = {
 	Vg = 1e63,
 }
 
--- Nomes das nossas próprias interfaces, pra NUNCA ler texto
--- delas mesmas (evita loop: nosso card também escreve "Tokens").
-local NOSSAS_GUIS = {
-	TokenPriceWatcherGui = true,
-	SamModsIntroGui = true,
-}
-
-local function ehNossaGui(instancia)
-
-	local atual = instancia
-
-	while atual and atual.Parent ~= PlayerGui do
-		atual = atual.Parent
-	end
-
-	return atual ~= nil and NOSSAS_GUIS[atual.Name] == true
-
-end
-
--- Converte um texto tipo "Tokens: 2.54T" ou "💎 691.4B" no
--- número real (2540000000000, 691400000000, etc).
+-- Converte um texto tipo "725.3B" ou "Tokens: 2.54T" no
+-- número real (725300000000, 2540000000000, etc).
 local function parseValorAbreviado(texto)
 
 	if not texto then
@@ -555,79 +555,13 @@ local function parseValorAbreviado(texto)
 
 end
 
--- Guarda o texto encontrado pra não escanear a interface
--- inteira toda hora; só re-escaneia se o objeto sumir.
-local tokensLabelCache = nil
-
--- Caminho exato confirmado no Explorer do jogo:
--- PlayerGui > HUD > Spendables > TokenRow > Tokens
--- Tentamos esse caminho primeiro (rápido e sem ambiguidade).
--- Se não existir (nome mudou, versão diferente do jogo, etc),
--- caímos pra busca genérica por qualquer texto com "token".
-local function encontrarPorCaminhoExato()
-
-	local hud = PlayerGui:FindFirstChild("HUD")
-	if not hud then return nil end
-
-	local spendables = hud:FindFirstChild("Spendables")
-	if not spendables then return nil end
-
-	local tokenRow = spendables:FindFirstChild("TokenRow")
-	if not tokenRow then return nil end
-
-	local tokensLabel = tokenRow:FindFirstChild("Tokens")
-	if not tokensLabel then return nil end
-
-	if tokensLabel:IsA("TextLabel") or tokensLabel:IsA("TextButton") then
-		return tokensLabel
-	end
-
-	return nil
-
-end
-
-local function encontrarLabelDeTokens()
-
-	if tokensLabelCache and tokensLabelCache.Parent then
-		return tokensLabelCache
-	end
-
-	local porCaminho = encontrarPorCaminhoExato()
-
-	if porCaminho then
-		tokensLabelCache = porCaminho
-		return porCaminho
-	end
-
-	-- Reserva: busca genérica por qualquer texto com "token",
-	-- caso o caminho exato não exista por algum motivo.
-	for _, obj in ipairs(PlayerGui:GetDescendants()) do
-
-		if (obj:IsA("TextLabel") or obj:IsA("TextButton"))
-			and obj.Text
-			and obj.Text:lower():find("token")
-			and not ehNossaGui(obj) then
-
-			tokensLabelCache = obj
-			return obj
-
-		end
-
-	end
-
-	return nil
-
-end
-
 local lastReadTokenAmount = nil
 
 local function lerQuantidadeTokens()
 
-	local label = encontrarLabelDeTokens()
+	if tokensLabel and tokensLabel.Parent then
 
-	if label then
-
-		local valor = parseValorAbreviado(label.Text)
+		local valor = parseValorAbreviado(tokensLabel.Text)
 
 		if valor then
 			return valor
@@ -635,8 +569,8 @@ local function lerQuantidadeTokens()
 
 	end
 
-	-- Fallback: se não achou nenhum texto de tokens na
-	-- interface, volta a usar o atributo como antes.
+	-- Fallback: se o texto não existir/não carregou, volta a
+	-- usar o atributo como antes.
 	return tonumber(LocalPlayer:GetAttribute("Tokens")) or 0
 
 end
