@@ -1359,7 +1359,7 @@ notificationText.Parent =
 local function enviarMensagemChat()
 
 	local mensagem =
-		"🌈 Loja: preço dos tokens está no máximo"
+		"🌈✨ [LOJA] O PREÇO MÁXIMO CHEGOU! 🤑💎 Tokens por $15! 🔥🛍️ CORRE PRA APROVEITAR! ✨"
 
 	if TextChatService.ChatVersion ==
 		Enum.ChatVersion.TextChatService then
@@ -2194,9 +2194,13 @@ local function formatNumber(number)
 
 			local valor = absoluto / unidade[1]
 
+			-- Sempre mostra pelo menos 1 casa decimal (não
+			-- arredonda pra número inteiro mesmo quando o valor
+			-- já é grande), pra bater exatamente com o valor
+			-- real do jogo. Zeros à direita ainda são cortados
+			-- pelo gsub logo abaixo (ex: 200.0 vira 200).
 			local casas =
-				valor >= 100 and 0
-				or (valor >= 10 and 1 or 2)
+				valor >= 10 and 1 or 2
 
 			local texto =
 				string.format(
