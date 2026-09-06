@@ -636,6 +636,13 @@ end
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 
+-- Módulo de fórmulas de hack do próprio jogo (só leitura, não
+-- usamos isso pra automatizar nada — apenas pra mostrar pra
+-- você uma estimativa de "chance de defesa").
+local HackMathOk, HackMath = pcall(function()
+	return require(Shared:WaitForChild("HackMath", 5))
+end)
+
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 
 local OpenTokenExchange = Remotes:FindFirstChild("OpenTokenExchange")
@@ -740,93 +747,6 @@ screenGui.IgnoreGuiInset = true
 screenGui.DisplayOrder = 10
 screenGui.Parent = PlayerGui
 
-
-HackEvent.OnClientEvent:Connect(function(data)
-
-	if typeof(data) ~= "table" then
-		return
-	end
-
-	print(
-		"[HACK ALERT]",
-		"kind =", data.kind,
-		"role =", data.role,
-		"name =", data.name
-	)
-
-	local kind = tostring(data.kind or ""):lower()
-	local action = tostring(data.action or ""):lower()
-	local eventType = tostring(data.type or ""):lower()
-	local role = tostring(data.role or ""):lower()
-	local name = tostring(data.name or "")
-
-	local rouboKinds = {
-		robbery = true,
-		roubo = true,
-		steal = true,
-		stealing = true,
-		stolen = true,
-		theft = true,
-		robbery_start = true,
-		robbery_end = true,
-		steal_start = true,
-		steal_end = true,
-	}
-
-	if rouboKinds[kind]
-		or rouboKinds[action]
-		or rouboKinds[eventType] then
-
-		pararAlerta()
-		return
-	end
-
-	-- =====================================================
-	--     SÓ TOCA O ALERTA SE VOCÊ FOR A VÍTIMA DO ROUBO
-	-- =====================================================
-	-- Confirmado no sistema do jogo: data.role vem como
-	-- "victim" (você está sendo hackeado/roubado) ou
-	-- "attacker" (você é quem está tentando roubar).
-	-- O alerta sonoro só deve tocar para "victim".
-
-	if data.kind == "phase" then
-
-		if role == "victim" then
-
-			iniciarAlerta()
-
-		elseif role == "attacker" then
-
-			-- Você é quem está roubando: não toca o alerta.
-
-		elseif name ~= "" and name == LocalPlayer.Name then
-
-			-- Sem "role" reconhecido, mas o nome do evento é o
-			-- seu: você é quem está roubando, não a vítima.
-
-		else
-
-			-- Role desconhecido/ausente: avisa no output para
-			-- podermos ajustar, mas não arrisca tocar à toa.
-			warn("[HACK ALERT] role inesperado recebido: '" .. tostring(data.role) .. "' (esperado 'victim' ou 'attacker')")
-
-		end
-
-		return
-	end
-
-	if data.kind == "abort"
-		or data.kind == "result"
-		or data.kind == "end"
-		or data.kind == "ended"
-		or data.kind == "finish"
-		or data.kind == "finished" then
-
-		pararAlerta()
-		return
-	end
-
-end)
 
 
 -- =========================================================
@@ -1091,6 +1011,119 @@ timerLabel.Text = "--s"
 timerLabel.ZIndex = 5
 
 timerLabel.Parent = card
+
+-- =========================================================
+--         INDICADOR DE "CHANCE DE DEFESA" (INFORMATIVO)
+-- =========================================================
+-- Mostra, usando a mesma fórmula do jogo (HackMath.chance),
+-- qual seria a chance de sucesso de alguém com HABILIDADE
+-- IGUAL À SUA tentando te hackear agora. Isso NÃO automatiza
+-- nada, é só uma estimativa pra você saber o quão vulnerável
+-- está — não sabemos o nível real de quem for te atacar.
+
+local defenseBadge = Instance.new("Frame")
+
+defenseBadge.Name = "DefenseBadge"
+defenseBadge.AnchorPoint = Vector2.new(1, 0)
+defenseBadge.Position = UDim2.new(1, -16, 0, 168)
+defenseBadge.Size = UDim2.fromOffset(150, 22)
+defenseBadge.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
+defenseBadge.BackgroundTransparency = 0.25
+defenseBadge.BorderSizePixel = 0
+defenseBadge.Parent = screenGui
+
+local defenseBadgeCorner = Instance.new("UICorner")
+defenseBadgeCorner.CornerRadius = UDim.new(0, 8)
+defenseBadgeCorner.Parent = defenseBadge
+
+local defenseBadgeStroke = Instance.new("UIStroke")
+defenseBadgeStroke.Color = Color3.fromRGB(90, 160, 255)
+defenseBadgeStroke.Transparency = 0.6
+defenseBadgeStroke.Thickness = 1
+defenseBadgeStroke.Parent = defenseBadge
+
+local defenseLabel = Instance.new("TextLabel")
+defenseLabel.Name = "DefenseLabel"
+defenseLabel.Size = UDim2.new(1, -12, 1, 0)
+defenseLabel.Position = UDim2.new(0, 6, 0, 0)
+defenseLabel.BackgroundTransparency = 1
+defenseLabel.Font = Enum.Font.GothamBold
+defenseLabel.TextSize = 11
+defenseLabel.TextColor3 = Color3.fromRGB(230, 235, 245)
+defenseLabel.TextXAlignment = Enum.TextXAlignment.Left
+defenseLabel.Text = "🛡️ Defesa: --"
+defenseLabel.ZIndex = 5
+defenseLabel.Parent = defenseBadge
+
+-- Nomes candidatos pro atributo que guarda seu nível de
+-- segurança. Se o nome real for outro, é só adicionar aqui.
+local SECURITY_ATTRIBUTE_CANDIDATES = {
+	"SecurityLevel",
+	"Security",
+	"DefenseLevel",
+	"Defense",
+	"HackDefense",
+	"Firewall",
+	"FirewallLevel",
+}
+
+local defenseWarningShown = false
+
+local function lerNivelSeguranca()
+
+	for _, nome in ipairs(SECURITY_ATTRIBUTE_CANDIDATES) do
+
+		local valor = LocalPlayer:GetAttribute(nome)
+
+		if typeof(valor) == "number" then
+			return valor
+		end
+
+	end
+
+	return nil
+
+end
+
+local function atualizarDefesaBadge()
+
+	if not HackMathOk or not HackMath then
+		defenseLabel.Text = "🛡️ Defesa: indisponível"
+		return
+	end
+
+	local securityLevel = lerNivelSeguranca()
+
+	if not securityLevel then
+
+		if not defenseWarningShown then
+			defenseWarningShown = true
+			warn("[TokenPriceWatcher] Não achei o atributo de nível de segurança. Ajuste SECURITY_ATTRIBUTE_CANDIDATES com o nome certo.")
+		end
+
+		defenseLabel.Text = "🛡️ Defesa: N/D"
+		return
+
+	end
+
+	-- Assume um atacante com habilidade IGUAL à sua própria
+	-- segurança (não temos como saber o nível real de quem
+	-- for te atacar). É só uma referência aproximada.
+	local ok, chanceAtaque = pcall(function()
+		return HackMath.chance(securityLevel, securityLevel, 1)
+	end)
+
+	if not ok or typeof(chanceAtaque) ~= "number" then
+		defenseLabel.Text = "🛡️ Defesa: erro"
+		return
+	end
+
+	local chanceDefesa = math.clamp(1 - chanceAtaque, 0, 1) * 100
+
+	defenseLabel.Text =
+		("🛡️ Defesa: %d%%"):format(math.floor(chanceDefesa + 0.5))
+
+end
 
 -- =========================================================
 --                         BADGE
@@ -2336,102 +2369,282 @@ local function formatNumber(number)
 	)
 
 end
-
 -- =========================================================
---        LEITURA DIRETA DO VALOR "VENDER TODOS POR $X"
+--       HISTÓRICO DE ROUBOS (BOTÃO + PAINEL)
 -- =========================================================
--- Em vez de calcular tokenAmount * preço por conta própria
--- (que pode ter diferenças de arredondamento), lemos direto o
--- texto do botão que o próprio jogo já calculou, no caminho:
--- PlayerGui > TokenExchangeUI > Panel > Content > Body >
--- SellAll > Label
---
--- Esse objeto só existe DEPOIS que o jogador abre o menu de
--- troca de tokens pela primeira vez (o jogo cria ele on-demand).
--- Por isso usamos FindFirstChild (não WaitForChild) e caímos
--- no cálculo manual se ainda não existir.
+-- Contador local (dura a sessão atual) de quantas vezes você
+-- hackeou com sucesso, quantas vezes foi hackeado, e quantos
+-- tokens ganhou/perdeu com isso. Tudo baseado nos eventos que
+-- o próprio jogo já manda (HackEvent, kind = "result") — não
+-- automatiza nada, é só contagem.
 
-local function encontrarLabelSellAll()
+-- Lê direto do "leaderstats" do jogo (que já é permanente,
+-- salvo pelo próprio servidor) em vez de contar por conta
+-- própria. Mostramos TODOS os stats encontrados lá, porque
+-- ainda não sabemos o nome exato do que representa "roubos".
 
-	local ui = PlayerGui:FindFirstChild("TokenExchangeUI")
-	if not ui then return nil end
+local historyPanel = Instance.new("Frame")
 
-	local panel = ui:FindFirstChild("Panel")
-	if not panel then return nil end
+historyPanel.Name = "HistoryPanel"
+historyPanel.AnchorPoint = Vector2.new(1, 0)
+historyPanel.Position = UDim2.new(1, -16, 0, 168)
+historyPanel.Size = UDim2.fromOffset(200, 140)
+historyPanel.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
+historyPanel.BackgroundTransparency = 0.1
+historyPanel.BorderSizePixel = 0
+historyPanel.Visible = false
+historyPanel.ZIndex = 20
+historyPanel.Parent = screenGui
 
-	local content = panel:FindFirstChild("Content")
-	if not content then return nil end
+local historyPanelCorner = Instance.new("UICorner")
+historyPanelCorner.CornerRadius = UDim.new(0, 10)
+historyPanelCorner.Parent = historyPanel
 
-	local body = content:FindFirstChild("Body")
-	if not body then return nil end
+local historyPanelStroke = Instance.new("UIStroke")
+historyPanelStroke.Color = Color3.fromRGB(140, 110, 230)
+historyPanelStroke.Thickness = 1.5
+historyPanelStroke.Transparency = 0.3
+historyPanelStroke.Parent = historyPanel
 
-	local sellAll = body:FindFirstChild("SellAll")
-	if not sellAll then return nil end
+local historyPadding = Instance.new("UIPadding")
+historyPadding.PaddingTop = UDim.new(0, 8)
+historyPadding.PaddingLeft = UDim.new(0, 10)
+historyPadding.PaddingRight = UDim.new(0, 10)
+historyPadding.Parent = historyPanel
 
-	local label = sellAll:FindFirstChild("Label")
+local historyTitle = Instance.new("TextLabel")
+historyTitle.Name = "Title"
+historyTitle.BackgroundTransparency = 1
+historyTitle.Size = UDim2.new(1, 0, 0, 16)
+historyTitle.Font = Enum.Font.GothamBlack
+historyTitle.TextSize = 12
+historyTitle.TextColor3 = Color3.fromRGB(200, 180, 255)
+historyTitle.TextXAlignment = Enum.TextXAlignment.Left
+historyTitle.Text = "📊 HISTÓRICO (conta)"
+historyTitle.ZIndex = 21
+historyTitle.Parent = historyPanel
 
-	if label and (label:IsA("TextLabel") or label:IsA("TextButton")) then
-		return label
+local historyText = Instance.new("TextLabel")
+historyText.Name = "Stats"
+historyText.BackgroundTransparency = 1
+historyText.Position = UDim2.new(0, 0, 0, 20)
+historyText.Size = UDim2.new(1, 0, 1, -20)
+historyText.Font = Enum.Font.Gotham
+historyText.TextSize = 11
+historyText.TextColor3 = Color3.fromRGB(220, 222, 230)
+historyText.TextXAlignment = Enum.TextXAlignment.Left
+historyText.TextYAlignment = Enum.TextYAlignment.Top
+historyText.RichText = true
+historyText.Text = "Carregando..."
+historyText.ZIndex = 21
+historyText.Parent = historyPanel
+
+-- Palavras-chave pra destacar (em negrito) o stat que parece
+-- ser de roubo/hack, já que não sabemos o nome exato.
+local PALAVRAS_ROUBO = {
+	"roub", "hack", "steal", "siphon", "vitim", "vitima",
+}
+
+local function pareceStatDeRoubo(nome)
+
+	local nomeMin = nome:lower()
+
+	for _, palavra in ipairs(PALAVRAS_ROUBO) do
+		if nomeMin:find(palavra) then
+			return true
+		end
 	end
 
-	-- Caso o texto esteja direto no próprio botão (sem filho
-	-- "Label"), tenta ler dali também.
-	if sellAll:IsA("TextButton") then
-		return sellAll
-	end
-
-	return nil
+	return false
 
 end
 
--- Extrai o número depois do "$" no texto do botão (funciona
--- com "VENDER TODOS POR $ 266.3B", "SELL ALL FOR $ 5.2T", etc).
-local function extrairValorAposCifrao(texto)
+local function atualizarPainelHistorico()
 
-	if not texto then
-		return nil
+	local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+
+	if not leaderstats then
+
+		historyText.Text = "Não achei 'leaderstats'."
+		return
+
 	end
 
-	local numeroStr, sufixo =
-		texto:match("%$%s*(%-?%d+[%.,]?%d*)%s*(%a*)")
+	local linhas = {}
 
-	if not numeroStr then
-		return nil
+	for _, stat in ipairs(leaderstats:GetChildren()) do
+
+		local valor = tostring(stat.Value)
+		local destaque = pareceStatDeRoubo(stat.Name)
+
+		if destaque then
+
+			table.insert(
+				linhas,
+				("⭐ <b>%s: %s</b>"):format(stat.Name, valor)
+			)
+
+		else
+
+			table.insert(
+				linhas,
+				("%s: %s"):format(stat.Name, valor)
+			)
+
+		end
+
 	end
 
-	numeroStr = numeroStr:gsub(",", ".")
-
-	local numero = tonumber(numeroStr)
-
-	if not numero then
-		return nil
+	if #linhas == 0 then
+		historyText.Text = "leaderstats está vazio."
+	else
+		historyText.Text = table.concat(linhas, "\n")
 	end
-
-	local multiplicador = UNIDADES_REVERSO[sufixo]
-
-	if multiplicador then
-		return numero * multiplicador
-	end
-
-	if sufixo == "" or sufixo == nil then
-		return numero
-	end
-
-	return nil
 
 end
 
-local function lerValorReceberDoJogo()
+-- Clicar no PREÇO (o número "$X" da loja) abre/fecha o
+-- histórico, sem precisar de um botão novo. Para isso,
+-- transformamos o priceLabel num botão transparente por cima.
 
-	local label = encontrarLabelSellAll()
+local priceClickCatcher = Instance.new("TextButton")
 
-	if not label then
-		return nil
+priceClickCatcher.Name = "PriceClickCatcher"
+priceClickCatcher.BackgroundTransparency = 1
+priceClickCatcher.BorderSizePixel = 0
+priceClickCatcher.Text = ""
+priceClickCatcher.AutoButtonColor = false
+priceClickCatcher.Size = priceLabel.Size
+priceClickCatcher.Position = priceLabel.Position
+priceClickCatcher.ZIndex = priceLabel.ZIndex + 1
+priceClickCatcher.Parent = card
+
+priceClickCatcher.MouseButton1Click:Connect(function()
+
+	historyPanel.Visible = not historyPanel.Visible
+
+	if historyPanel.Visible then
+		atualizarPainelHistorico()
 	end
 
-	return extrairValorAposCifrao(label.Text)
+end)
 
-end
+-- Atualiza o painel automaticamente enquanto estiver aberto,
+-- assim os números do leaderstats aparecem sempre em dia.
+task.spawn(function()
+
+	while historyPanel.Parent do
+
+		if historyPanel.Visible then
+			atualizarPainelHistorico()
+		end
+
+		task.wait(2)
+
+	end
+
+end)
+
+HackEvent.OnClientEvent:Connect(function(data)
+
+	if typeof(data) ~= "table" then
+		return
+	end
+
+	print(
+		"[HACK ALERT]",
+		"kind =", data.kind,
+		"role =", data.role,
+		"name =", data.name
+	)
+
+	local kind = tostring(data.kind or ""):lower()
+	local action = tostring(data.action or ""):lower()
+	local eventType = tostring(data.type or ""):lower()
+	local role = tostring(data.role or ""):lower()
+	local name = tostring(data.name or "")
+
+	local rouboKinds = {
+		robbery = true,
+		roubo = true,
+		steal = true,
+		stealing = true,
+		stolen = true,
+		theft = true,
+		robbery_start = true,
+		robbery_end = true,
+		steal_start = true,
+		steal_end = true,
+	}
+
+	if rouboKinds[kind]
+		or rouboKinds[action]
+		or rouboKinds[eventType] then
+
+		pararAlerta()
+		return
+	end
+
+	-- =====================================================
+	--     SÓ TOCA O ALERTA SE VOCÊ FOR A VÍTIMA DO ROUBO
+	-- =====================================================
+	-- Confirmado no sistema do jogo: data.role vem como
+	-- "victim" (você está sendo hackeado/roubado) ou
+	-- "attacker" (você é quem está tentando roubar).
+	-- O alerta sonoro só deve tocar para "victim".
+
+	if data.kind == "phase" then
+
+		if role == "victim" then
+
+			iniciarAlerta()
+
+		elseif role == "attacker" then
+
+			-- Você é quem está roubando: não toca o alerta.
+
+		elseif name ~= "" and name == LocalPlayer.Name then
+
+			-- Sem "role" reconhecido, mas o nome do evento é o
+			-- seu: você é quem está roubando, não a vítima.
+
+		else
+
+			-- Role desconhecido/ausente: avisa no output para
+			-- podermos ajustar, mas não arrisca tocar à toa.
+			warn("[HACK ALERT] role inesperado recebido: '" .. tostring(data.role) .. "' (esperado 'victim' ou 'attacker')")
+
+		end
+
+		return
+	end
+
+	if data.kind == "result" then
+
+		-- Não contamos mais manualmente: o painel lê direto do
+		-- leaderstats (que o jogo já salva permanentemente).
+		-- Só atualizamos a exibição se o painel estiver aberto.
+
+		if historyPanel.Visible then
+			atualizarPainelHistorico()
+		end
+
+		pararAlerta()
+		return
+
+	end
+
+	if data.kind == "abort"
+		or data.kind == "end"
+		or data.kind == "ended"
+		or data.kind == "finish"
+		or data.kind == "finished" then
+
+		pararAlerta()
+		return
+	end
+
+end)
 
 -- =========================================================
 --                     ATUALIZAR DISPLAY
@@ -2455,16 +2668,10 @@ local function updateDisplay()
 	local tokenAmount =
 		lerQuantidadeTokens()
 
-	-- Tenta pegar o valor exato que o PRÓPRIO JOGO já calculou
-	-- (lendo o texto do botão "Vender todos por $X"). Só cai no
-	-- cálculo manual (tokenAmount * preço) se esse texto ainda
-	-- não existir (jogador nunca abriu o menu de troca).
+	-- Cálculo automático: sempre atualiza em tempo real, sem
+	-- depender de nenhum menu estar aberto.
 	local valorReceber =
-		lerValorReceberDoJogo()
-
-	if not valorReceber then
-		valorReceber = tokenAmount * rawPrice
-	end
+		tokenAmount * rawPrice
 
 	earningsLabel.Text =
 		("💎 Tokens: %s  •  💰 Receber: $%s"):format(
@@ -2620,6 +2827,8 @@ task.spawn(function()
 
 		updateDisplay()
 
+		atualizarDefesaBadge()
+
 		task.wait(0.5)
 
 	end
@@ -2656,3 +2865,4 @@ end)
 -- =========================================================
 
 updateDisplay()
+atualizarDefesaBadge()
