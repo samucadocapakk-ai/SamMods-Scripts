@@ -1359,7 +1359,7 @@ notificationText.Parent =
 local function enviarMensagemChat()
 
 	local mensagem =
-		"🌈✨ [LOJA] O PREÇO MÁXIMO CHEGOU! 🤑💎 Tokens por $15! 🔥🛍️ CORRE PRA APROVEITAR! ✨"
+		"🌈 Loja: preço dos tokens está no máximo"
 
 	if TextChatService.ChatVersion ==
 		Enum.ChatVersion.TextChatService then
