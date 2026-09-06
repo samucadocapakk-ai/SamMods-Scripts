@@ -1,563 +1,2016 @@
-# SamMods-Scripts
-```lua
--- ============================================================
---  SamMods Panel | LocalScript
---  Coloque em: StarterPlayerScripts ou StarterCharacterScripts
--- ============================================================
+--[[
+    TokenPriceWatcher + QuickShop + Hack Alert
+    Local: StarterPlayerScripts
 
-local Players          = game:GetService("Players")
-local RunService       = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local TweenService     = game:GetService("TweenService")
+    EFEITOS:
+    - Preço normal
+    - Efeito de alta
+    - Efeito de mínimo
+    - Modo MAXIMO / 15:
+        * Rainbow
+        * Glow pulsando
+        * Card pulsando
+        * Borda rainbow
+        * Badge animado
+        * Aura visual
+        * Partículas de brilho
+        * Mensagem no chat como jogador (UMA ÚNICA VEZ por ativação)
+        * Tokens + valor a receber
+        * Notificação rainbow
+]]
 
-local localPlayer = Players.LocalPlayer
-local localChar   = localPlayer.Character or localPlayer.CharacterAdded:Wait()
-local camera      = workspace.CurrentCamera
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local SoundService = game:GetService("SoundService")
+local RunService = game:GetService("RunService")
+local TextChatService = game:GetService("TextChatService")
+local StarterGui = game:GetService("StarterGui")
 
-local espEnabled      = false
-local espObjects      = {}
-local sittingOnPlayer = nil
-local seatWeld        = nil
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- ============================================================
---  GUI PRINCIPAL
--- ============================================================
+-- =========================================================
+--              LEITURA REAL DOS TOKENS
+-- =========================================================
+
+local lastReadTokenAmount = nil
+
+local function lerQuantidadeTokens()
+	return tonumber(LocalPlayer:GetAttribute("Tokens")) or 0
+end
+
+-- =========================================================
+--              PROTEÇÃO CONTRA MÚLTIPLAS INSTÂNCIAS
+-- =========================================================
+
+local INSTANCE_MARKER_NAME = "TokenPriceWatcher_Instance"
+
+local existingInstance =
+	PlayerGui:FindFirstChild(INSTANCE_MARKER_NAME)
+
+if existingInstance then
+	warn(
+		"[TokenPriceWatcher] Outra instância já está ativa. Esta instância foi bloqueada."
+	)
+
+	script:Destroy()
+	return
+end
+
+local instanceMarker =
+	Instance.new("BoolValue")
+
+instanceMarker.Name =
+	INSTANCE_MARKER_NAME
+
+instanceMarker.Value =
+	true
+
+instanceMarker.Parent =
+	PlayerGui
+
+script.Destroying:Connect(function()
+
+	if instanceMarker
+		and instanceMarker.Parent then
+
+		instanceMarker:Destroy()
+
+	end
+
+end)
+
+-- =========================================================
+--                     LIMPEZA AUTOMÁTICA
+-- =========================================================
+
+local existingGui =
+	PlayerGui:FindFirstChild(
+		"TokenPriceWatcherGui"
+	)
+
+if existingGui then
+	existingGui:Destroy()
+end
+
+-- =========================================================
+--                     CONFIGURAÇÕES
+-- =========================================================
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+
+local OpenTokenExchange = Remotes:FindFirstChild("OpenTokenExchange")
+local HackEvent = Remotes:WaitForChild("HackEvent")
+
+local function readNumber(value, default)
+	local n = tonumber(value)
+	return n or default
+end
+
+local PRICE_MIN = math.floor(
+	readNumber(Config.Tokens.priceMin, 5)
+)
+
+local PRICE_MAX = math.floor(
+	readNumber(Config.Tokens.priceMax, 15)
+)
+
+local PRICE_SPIKE = math.floor(
+	readNumber(Config.Tokens.spikePrice, 12)
+)
+
+local PRICE_BASE = math.floor(
+	readNumber(Config.Tokens.basePrice, 10)
+)
+
+local EPOCH_SECONDS = math.max(
+	1,
+	math.floor(
+		readNumber(Config.Tokens.priceEpochSeconds, 30)
+	)
+)
+
+local COLOR_THEMES = {
+	Min = Color3.fromRGB(80, 220, 120),
+	Base = Color3.fromRGB(0, 170, 255),
+	Spike = Color3.fromRGB(255, 130, 40),
+	Max = Color3.fromRGB(255, 200, 0)
+}
+
+-- =========================================================
+--                         HACK ALERT
+-- =========================================================
+
+local AlertSound = SoundService:FindFirstChild("HackAlertSound")
+
+if not AlertSound then
+
+	AlertSound = Instance.new("Sound")
+	AlertSound.Name = "HackAlertSound"
+	AlertSound.SoundId = "rbxassetid://5348162330"
+	AlertSound.Volume = 3
+	AlertSound.Looped = true
+	AlertSound.Parent = SoundService
+
+end
+
+AlertSound.Volume = 3
+
+local alertaAtivo = false
+
+local function iniciarAlerta()
+
+	if alertaAtivo then
+		return
+	end
+
+	alertaAtivo = true
+
+	AlertSound:Stop()
+	AlertSound.TimePosition = 0
+	AlertSound:Play()
+
+	print("[HACK ALERT] ALERTA INICIADO")
+
+end
+
+local function pararAlerta()
+
+	if not alertaAtivo then
+		return
+	end
+
+	alertaAtivo = false
+
+	AlertSound:Stop()
+	AlertSound.TimePosition = 0
+
+	print("[HACK ALERT] ALERTA ENCERRADO")
+
+end
+
+-- =========================================================
+--                         UI PRINCIPAL
+-- =========================================================
+
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name            = "SamModsPanel"
-screenGui.ResetOnSpawn    = false
-screenGui.ZIndexBehavior  = Enum.ZIndexBehavior.Sibling
-screenGui.Parent          = localPlayer.PlayerGui
 
-local panel = Instance.new("Frame")
-panel.Name              = "Panel"
-panel.Size              = UDim2.new(0, 320, 0, 420)
-panel.Position          = UDim2.new(0.5, -160, 0.5, -210)
-panel.BackgroundColor3  = Color3.fromRGB(10, 10, 18)
-panel.BorderSizePixel   = 0
-panel.AnchorPoint       = Vector2.new(0.5, 0.5)
-panel.ClipsDescendants  = true
-panel.Parent            = screenGui
+screenGui.Name = "TokenPriceWatcherGui"
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+screenGui.DisplayOrder = 10
+screenGui.Parent = PlayerGui
 
-local stroke = Instance.new("UIStroke")
-stroke.Color     = Color3.fromRGB(0, 200, 255)
-stroke.Thickness = 2
-stroke.Parent    = panel
 
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 12)
-corner.Parent = panel
+HackEvent.OnClientEvent:Connect(function(data)
 
-local titleBar = Instance.new("Frame")
-titleBar.Size             = UDim2.new(1, 0, 0, 44)
-titleBar.BackgroundColor3 = Color3.fromRGB(0, 170, 230)
-titleBar.BorderSizePixel  = 0
-titleBar.Parent           = panel
+	if typeof(data) ~= "table" then
+		return
+	end
 
-local titleCorner = Instance.new("UICorner")
-titleCorner.CornerRadius = UDim.new(0, 12)
-titleCorner.Parent = titleBar
+	print(
+		"[HACK ALERT]",
+		"kind =", data.kind,
+		"role =", data.role,
+		"name =", data.name
+	)
 
-local titleFix = Instance.new("Frame")
-titleFix.Size             = UDim2.new(1, 0, 0, 12)
-titleFix.Position         = UDim2.new(0, 0, 1, -12)
-titleFix.BackgroundColor3 = Color3.fromRGB(0, 170, 230)
-titleFix.BorderSizePixel  = 0
-titleFix.Parent           = titleBar
+	local kind = tostring(data.kind or ""):lower()
+	local action = tostring(data.action or ""):lower()
+	local eventType = tostring(data.type or ""):lower()
+	local role = tostring(data.role or ""):lower()
+	local name = tostring(data.name or "")
 
-local titleLabel = Instance.new("TextLabel")
-titleLabel.Size               = UDim2.new(1, -50, 1, 0)
-titleLabel.Position           = UDim2.new(0, 14, 0, 0)
-titleLabel.BackgroundTransparency = 1
-titleLabel.Text               = "⚡ SamMods"
-titleLabel.TextColor3         = Color3.new(1,1,1)
-titleLabel.Font               = Enum.Font.GothamBold
-titleLabel.TextSize           = 17
-titleLabel.TextXAlignment     = Enum.TextXAlignment.Left
-titleLabel.Parent             = titleBar
+	local rouboKinds = {
+		robbery = true,
+		roubo = true,
+		steal = true,
+		stealing = true,
+		stolen = true,
+		theft = true,
+		robbery_start = true,
+		robbery_end = true,
+		steal_start = true,
+		steal_end = true,
+	}
 
-local closeBtn = Instance.new("TextButton")
-closeBtn.Size             = UDim2.new(0, 32, 0, 32)
-closeBtn.Position         = UDim2.new(1, -38, 0, 6)
-closeBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-closeBtn.Text             = "✕"
-closeBtn.TextColor3       = Color3.new(1,1,1)
-closeBtn.Font             = Enum.Font.GothamBold
-closeBtn.TextSize         = 14
-closeBtn.BorderSizePixel  = 0
-closeBtn.Parent           = titleBar
+	if rouboKinds[kind]
+		or rouboKinds[action]
+		or rouboKinds[eventType] then
 
-local closeCorner = Instance.new("UICorner")
-closeCorner.CornerRadius = UDim.new(0, 8)
-closeCorner.Parent = closeBtn
+		pararAlerta()
+		return
+	end
 
-local openBtn = Instance.new("TextButton")
-openBtn.Size             = UDim2.new(0, 110, 0, 34)
-openBtn.Position         = UDim2.new(0, 12, 0, 12)
-openBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 230)
-openBtn.Text             = "⚡ SamMods"
-openBtn.TextColor3       = Color3.new(1,1,1)
-openBtn.Font             = Enum.Font.GothamBold
-openBtn.TextSize         = 13
-openBtn.BorderSizePixel  = 0
-openBtn.Visible          = false
-openBtn.Parent           = screenGui
+	-- =====================================================
+	--     SÓ TOCA O ALERTA SE VOCÊ FOR A VÍTIMA DO ROUBO
+	-- =====================================================
+	-- Confirmado no sistema do jogo: data.role vem como
+	-- "victim" (você está sendo hackeado/roubado) ou
+	-- "attacker" (você é quem está tentando roubar).
+	-- O alerta sonoro só deve tocar para "victim".
 
-local openCorner = Instance.new("UICorner")
-openCorner.CornerRadius = UDim.new(0, 8)
-openCorner.Parent = openBtn
+	if data.kind == "phase" then
 
--- ============================================================
---  ANIMAÇÃO ABRIR/FECHAR
--- ============================================================
-local panelOpen = true
+		if role == "victim" then
 
-local function setPanelVisible(visible)
-    panelOpen = visible
-    if visible then
-        panel.Visible = true
-        panel.Size    = UDim2.new(0, 0, 0, 0)
-        panel.Position = UDim2.new(0.5, 0, 0.5, 0)
-        TweenService:Create(panel, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-            Size     = UDim2.new(0, 320, 0, 420),
-            Position = UDim2.new(0.5, -160, 0.5, -210),
-        }):Play()
-        openBtn.Visible = false
-    else
-        local t = TweenService:Create(panel, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-            Size     = UDim2.new(0, 0, 0, 0),
-            Position = UDim2.new(0.5, 0, 0.5, 0),
-        })
-        t:Play()
-        t.Completed:Connect(function() panel.Visible = false end)
-        openBtn.Visible = true
-    end
-end
+			iniciarAlerta()
 
-closeBtn.MouseButton1Click:Connect(function() setPanelVisible(false) end)
-openBtn.MouseButton1Click:Connect(function()  setPanelVisible(true)  end)
+		elseif role == "attacker" then
 
--- ============================================================
---  DRAG
--- ============================================================
-do
-    local dragging, dragStart, startPos
-    titleBar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or
-           input.UserInputType == Enum.UserInputType.Touch then
-            dragging  = true
-            dragStart = input.Position
-            startPos  = panel.Position
-        end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or
-                         input.UserInputType == Enum.UserInputType.Touch) then
-            local delta = input.Position - dragStart
-            panel.Position = UDim2.new(
-                startPos.X.Scale, startPos.X.Offset + delta.X,
-                startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or
-           input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-        end
-    end)
-end
+			-- Você é quem está roubando: não toca o alerta.
 
--- ============================================================
---  CONTEÚDO
--- ============================================================
-local contentFrame = Instance.new("ScrollingFrame")
-contentFrame.Size                 = UDim2.new(1, -16, 1, -56)
-contentFrame.Position             = UDim2.new(0, 8, 0, 52)
-contentFrame.BackgroundTransparency = 1
-contentFrame.BorderSizePixel      = 0
-contentFrame.ScrollBarThickness   = 4
-contentFrame.ScrollBarImageColor3 = Color3.fromRGB(0, 200, 255)
-contentFrame.CanvasSize           = UDim2.new(0, 0, 0, 0)
-contentFrame.AutomaticCanvasSize  = Enum.AutomaticSize.Y
-contentFrame.Parent               = panel
+		elseif name ~= "" and name == LocalPlayer.Name then
 
-local listLayout = Instance.new("UIListLayout")
-listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-listLayout.Padding   = UDim.new(0, 8)
-listLayout.Parent    = contentFrame
+			-- Sem "role" reconhecido, mas o nome do evento é o
+			-- seu: você é quem está roubando, não a vítima.
 
-local padContent = Instance.new("UIPadding")
-padContent.PaddingTop    = UDim.new(0, 4)
-padContent.PaddingBottom = UDim.new(0, 4)
-padContent.Parent        = contentFrame
+		else
 
-local function makeSectionLabel(txt)
-    local lbl = Instance.new("TextLabel")
-    lbl.Size               = UDim2.new(1, 0, 0, 24)
-    lbl.BackgroundTransparency = 1
-    lbl.Text               = txt
-    lbl.TextColor3         = Color3.fromRGB(0, 200, 255)
-    lbl.Font               = Enum.Font.GothamBold
-    lbl.TextSize           = 13
-    lbl.TextXAlignment     = Enum.TextXAlignment.Left
-    lbl.Parent             = contentFrame
-    return lbl
-end
+			-- Role desconhecido/ausente: avisa no output para
+			-- podermos ajustar, mas não arrisca tocar à toa.
+			warn("[HACK ALERT] role inesperado recebido: '" .. tostring(data.role) .. "' (esperado 'victim' ou 'attacker')")
 
--- ============================================================
---  ESP
--- ============================================================
-makeSectionLabel("  👁  VISUAL")
+		end
 
-local espBtn = Instance.new("TextButton")
-espBtn.Size             = UDim2.new(1, 0, 0, 42)
-espBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 32)
-espBtn.BorderSizePixel  = 0
-espBtn.Text             = "⬜ ESP  (ver jogadores)"
-espBtn.TextColor3       = Color3.new(1,1,1)
-espBtn.Font             = Enum.Font.GothamSemibold
-espBtn.TextSize         = 14
-espBtn.Parent           = contentFrame
+		return
+	end
 
-do
-    local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0,8); bc.Parent = espBtn
-    local bs = Instance.new("UIStroke"); bs.Color = Color3.fromRGB(255,80,80); bs.Thickness = 1.5; bs.Parent = espBtn
-end
+	if data.kind == "abort"
+		or data.kind == "result"
+		or data.kind == "end"
+		or data.kind == "ended"
+		or data.kind == "finish"
+		or data.kind == "finished" then
 
-local function addESP(player)
-    if player == localPlayer then return end
-    if espObjects[player] then return end
-    local char = player.Character
-    if not char then return end
+		pararAlerta()
+		return
+	end
 
-    local hl = Instance.new("SelectionBox")
-    hl.Adornee             = char
-    hl.Color3              = Color3.fromRGB(255, 50, 50)
-    hl.LineThickness       = 0.05
-    hl.SurfaceTransparency = 0.7
-    hl.SurfaceColor3       = Color3.fromRGB(0, 120, 255)
-    hl.Parent              = camera
-
-    local bb = Instance.new("BillboardGui")
-    bb.Adornee     = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head")
-    bb.Size        = UDim2.new(0, 120, 0, 30)
-    bb.StudsOffset = Vector3.new(0, 3, 0)
-    bb.AlwaysOnTop = true
-    bb.ResetOnSpawn = false
-    bb.Parent      = camera
-
-    local nl = Instance.new("TextLabel", bb)
-    nl.Size               = UDim2.new(1,0,1,0)
-    nl.BackgroundTransparency = 1
-    nl.Text               = player.Name
-    nl.TextColor3         = Color3.new(1,1,1)
-    nl.Font               = Enum.Font.GothamBold
-    nl.TextSize           = 14
-    nl.TextStrokeTransparency = 0
-
-    espObjects[player] = { hl = hl, bb = bb }
-end
-
-local function removeESP(player)
-    local obj = espObjects[player]
-    if obj then
-        obj.hl:Destroy()
-        obj.bb:Destroy()
-        espObjects[player] = nil
-    end
-end
-
-local function refreshESP()
-    if espEnabled then
-        for _, p in ipairs(Players:GetPlayers()) do addESP(p) end
-    else
-        for p in pairs(espObjects) do removeESP(p) end
-    end
-end
-
-espBtn.MouseButton1Click:Connect(function()
-    espEnabled = not espEnabled
-    espBtn.BackgroundColor3 = espEnabled
-        and Color3.fromRGB(140, 20, 20)
-        or  Color3.fromRGB(20, 20, 32)
-    espBtn.Text = (espEnabled and "✅" or "⬜") .. " ESP  (ver jogadores)"
-    refreshESP()
 end)
 
-Players.PlayerAdded:Connect(function(p)
-    if espEnabled then
-        p.CharacterAdded:Connect(function()
-            task.wait(1); removeESP(p); addESP(p)
-        end)
-        task.wait(1); addESP(p)
-    end
+
+-- =========================================================
+--                         AURA EXTERNA
+-- =========================================================
+
+local aura = Instance.new("Frame")
+
+aura.Name = "MaxAura"
+aura.AnchorPoint = Vector2.new(1, 0)
+aura.Position = UDim2.new(1, -16, 0, 110)
+aura.Size = UDim2.fromOffset(150, 54)
+
+aura.BackgroundTransparency = 1
+aura.BorderSizePixel = 0
+
+aura.Visible = false
+aura.Parent = screenGui
+
+local auraCorner = Instance.new("UICorner")
+
+auraCorner.CornerRadius = UDim.new(0, 12)
+auraCorner.Parent = aura
+
+local auraStroke = Instance.new("UIStroke")
+
+auraStroke.Thickness = 5
+auraStroke.Transparency = 0.75
+
+auraStroke.Parent = aura
+
+-- =========================================================
+--                         CARD
+-- =========================================================
+
+local card = Instance.new("TextButton")
+
+card.Name = "PriceCard"
+
+card.AnchorPoint = Vector2.new(1, 0)
+
+card.Position = UDim2.new(
+	1,
+	-16,
+	0,
+	110
+)
+
+card.Size = UDim2.fromOffset(
+	150,
+	54
+)
+
+card.BackgroundColor3 = Color3.fromRGB(
+	18,
+	20,
+	26
+)
+
+card.BackgroundTransparency = 0.25
+
+card.BorderSizePixel = 0
+
+card.AutoButtonColor = false
+
+card.Text = ""
+
+card.Parent = screenGui
+
+local cardCorner = Instance.new("UICorner")
+
+cardCorner.CornerRadius = UDim.new(
+	0,
+	8
+)
+
+cardCorner.Parent = card
+
+local cardStroke = Instance.new("UIStroke")
+
+cardStroke.Color = COLOR_THEMES.Base
+cardStroke.Transparency = 0.8
+cardStroke.Thickness = 1.2
+
+cardStroke.Parent = card
+
+local cardPadding = Instance.new("UIPadding")
+
+cardPadding.PaddingTop = UDim.new(0, 3)
+cardPadding.PaddingBottom = UDim.new(0, 3)
+cardPadding.PaddingLeft = UDim.new(0, 8)
+cardPadding.PaddingRight = UDim.new(0, 8)
+
+cardPadding.Parent = card
+
+-- =========================================================
+--                     BRILHO INTERNO
+-- =========================================================
+
+local shine = Instance.new("Frame")
+
+shine.Name = "Shine"
+
+shine.BackgroundColor3 = Color3.fromRGB(
+	255,
+	255,
+	255
+)
+
+shine.BackgroundTransparency = 1
+
+shine.BorderSizePixel = 0
+
+shine.Position = UDim2.new(
+	-0.5,
+	0,
+	0,
+	0
+)
+
+shine.Size = UDim2.new(
+	0.35,
+	0,
+	1,
+	0
+)
+
+shine.Rotation = 15
+
+shine.Parent = card
+
+local shineGradient = Instance.new("UIGradient")
+
+shineGradient.Transparency = NumberSequence.new({
+	NumberSequenceKeypoint.new(0, 1),
+	NumberSequenceKeypoint.new(0.5, 0.4),
+	NumberSequenceKeypoint.new(1, 1)
+})
+
+shineGradient.Parent = shine
+
+-- =========================================================
+--                     PREÇO
+-- =========================================================
+
+local priceLabel = Instance.new("TextLabel")
+
+priceLabel.Name = "PriceLabel"
+
+priceLabel.BackgroundTransparency = 1
+
+priceLabel.Position = UDim2.new(
+	0,
+	0,
+	0,
+	3
+)
+
+priceLabel.Size = UDim2.new(
+	0,
+	80,
+	0,
+	18
+)
+
+priceLabel.Font = Enum.Font.GothamBold
+
+priceLabel.TextSize = 15
+
+priceLabel.TextColor3 = Color3.fromRGB(
+	255,
+	255,
+	255
+)
+
+priceLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+priceLabel.Text = ("$%d"):format(
+	PRICE_BASE
+)
+
+priceLabel.ZIndex = 5
+
+priceLabel.Parent = card
+
+-- =========================================================
+--                  TOKENS / VALOR A RECEBER
+-- =========================================================
+
+local earningsLabel = Instance.new("TextLabel")
+
+earningsLabel.Name = "EarningsLabel"
+
+earningsLabel.BackgroundTransparency = 1
+
+earningsLabel.Position = UDim2.new(
+	0,
+	0,
+	0,
+	21
+)
+
+earningsLabel.Size = UDim2.new(
+	1,
+	0,
+	0,
+	10
+)
+
+earningsLabel.Font = Enum.Font.GothamBold
+earningsLabel.TextSize = 9
+earningsLabel.TextColor3 = Color3.fromRGB(
+	220,
+	225,
+	235
+)
+
+earningsLabel.TextXAlignment = Enum.TextXAlignment.Left
+earningsLabel.Text = "💎 Tokens: 0  •  💰 Receber: $0"
+
+earningsLabel.ZIndex = 5
+earningsLabel.Parent = card
+
+-- =========================================================
+--                         TIMER
+-- =========================================================
+
+local timerLabel = Instance.new("TextLabel")
+
+timerLabel.Name = "TimerLabel"
+
+timerLabel.BackgroundTransparency = 1
+
+timerLabel.Position = UDim2.new(
+	0,
+	0,
+	0,
+	34
+)
+
+timerLabel.Size = UDim2.new(
+	1,
+	0,
+	0,
+	14
+)
+
+timerLabel.Font = Enum.Font.GothamBold
+
+timerLabel.TextSize = 11
+
+timerLabel.TextColor3 = Color3.fromRGB(
+	225,
+	228,
+	238
+)
+
+timerLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+timerLabel.Text = "--s"
+
+timerLabel.ZIndex = 5
+
+timerLabel.Parent = card
+
+-- =========================================================
+--                         BADGE
+-- =========================================================
+
+local statusBadge = Instance.new("TextLabel")
+
+statusBadge.Name = "StatusBadge"
+
+statusBadge.AnchorPoint = Vector2.new(
+	1,
+	0
+)
+
+statusBadge.Position = UDim2.new(
+	1,
+	0,
+	0,
+	2
+)
+
+statusBadge.Size = UDim2.fromOffset(
+	52,
+	15
+)
+
+statusBadge.BackgroundColor3 =
+	COLOR_THEMES.Base
+
+statusBadge.BackgroundTransparency = 0.2
+
+statusBadge.Font = Enum.Font.GothamBold
+
+statusBadge.TextSize = 8
+
+statusBadge.TextColor3 =
+	Color3.fromRGB(
+		255,
+		255,
+		255
+	)
+
+statusBadge.Text = "NORMAL"
+
+statusBadge.ZIndex = 6
+
+statusBadge.Parent = card
+
+local badgeCorner = Instance.new("UICorner")
+
+badgeCorner.CornerRadius =
+	UDim.new(0, 4)
+
+badgeCorner.Parent =
+	statusBadge
+
+local badgeStroke = Instance.new("UIStroke")
+
+badgeStroke.Thickness = 1
+
+badgeStroke.Transparency = 0.5
+
+badgeStroke.Parent = statusBadge
+
+-- =========================================================
+--         BOTÃO MANUAL DE ENVIAR MENSAGEM NO CHAT
+-- =========================================================
+-- Permite mandar a mensagem de "loja no máximo" na hora,
+-- sem precisar esperar o preço realmente chegar no máximo.
+-- Ainda respeita o cooldown de CHAT_COOLDOWN segundos para
+-- não tomar punição por flood se clicar várias vezes seguidas.
+
+local sendMsgButton = Instance.new("TextButton")
+
+sendMsgButton.Name = "SendMaxMessageButton"
+
+sendMsgButton.AnchorPoint = Vector2.new(0, 0)
+
+sendMsgButton.Position = UDim2.new(
+	0,
+	-28,
+	0,
+	8
+)
+
+sendMsgButton.Size = UDim2.fromOffset(
+	22,
+	22
+)
+
+sendMsgButton.BackgroundColor3 = Color3.fromRGB(
+	40,
+	120,
+	220
+)
+
+sendMsgButton.AutoButtonColor = false
+
+sendMsgButton.Font = Enum.Font.GothamBold
+
+sendMsgButton.TextSize = 11
+
+sendMsgButton.Text = "📢"
+
+sendMsgButton.TextColor3 = Color3.fromRGB(
+	255,
+	255,
+	255
+)
+
+sendMsgButton.ZIndex = 10
+
+sendMsgButton.Parent = card
+
+local sendMsgCorner = Instance.new("UICorner")
+
+sendMsgCorner.CornerRadius = UDim.new(0, 4)
+sendMsgCorner.Parent = sendMsgButton
+
+local sendMsgStroke = Instance.new("UIStroke")
+
+sendMsgStroke.Thickness = 1
+sendMsgStroke.Transparency = 0.4
+sendMsgStroke.Parent = sendMsgButton
+
+-- =========================================================
+--                    BARRA DE PROGRESSO
+-- =========================================================
+
+local progressBackground = Instance.new("Frame")
+
+progressBackground.Name =
+	"ProgressBackground"
+
+progressBackground.Position =
+	UDim2.new(
+		0,
+		0,
+		1,
+		-2
+	)
+
+progressBackground.Size =
+	UDim2.new(
+		1,
+		0,
+		0,
+		2
+	)
+
+progressBackground.BackgroundColor3 =
+	Color3.fromRGB(
+		255,
+		255,
+		255
+	)
+
+progressBackground.BackgroundTransparency =
+	0.9
+
+progressBackground.BorderSizePixel =
+	0
+
+progressBackground.ClipsDescendants =
+	true
+
+progressBackground.Parent =
+	card
+
+local progressBar = Instance.new("Frame")
+
+progressBar.Name =
+	"ProgressBar"
+
+progressBar.Size =
+	UDim2.new(
+		1,
+		0,
+		1,
+		0
+	)
+
+progressBar.BackgroundColor3 =
+	COLOR_THEMES.Base
+
+progressBar.BorderSizePixel =
+	0
+
+progressBar.Parent =
+	progressBackground
+
+-- =========================================================
+--                 PARTICULAS VISUAIS
+-- =========================================================
+
+local sparkleContainer = Instance.new("Frame")
+
+sparkleContainer.Name =
+	"Sparkles"
+
+sparkleContainer.BackgroundTransparency =
+	1
+
+sparkleContainer.Size =
+	UDim2.fromScale(
+		1,
+		1
+	)
+
+sparkleContainer.ClipsDescendants =
+	false
+
+sparkleContainer.Visible =
+	false
+
+sparkleContainer.ZIndex =
+	20
+
+sparkleContainer.Parent =
+	card
+
+local sparkles = {}
+
+for i = 1, 8 do
+
+	local sparkle = Instance.new("TextLabel")
+
+	sparkle.Name =
+		"Sparkle_" .. i
+
+	sparkle.BackgroundTransparency =
+		1
+
+	sparkle.Text =
+		"✦"
+
+	sparkle.TextSize =
+		math.random(8, 15)
+
+	sparkle.Font =
+		Enum.Font.GothamBold
+
+	sparkle.TextColor3 =
+		Color3.fromRGB(
+			255,
+			255,
+			255
+		)
+
+	sparkle.Visible =
+		false
+
+	sparkle.ZIndex =
+		21
+
+	sparkle.Parent =
+		sparkleContainer
+
+	table.insert(
+		sparkles,
+		sparkle
+	)
+
+end
+
+-- =========================================================
+--              NOTIFICAÇÃO DE PREÇO MÁXIMO
+-- =========================================================
+
+local maxNotification = Instance.new("Frame")
+
+maxNotification.Name = "MaxPriceNotification"
+
+maxNotification.AnchorPoint = Vector2.new(0.5, 0)
+
+maxNotification.Position = UDim2.new(
+	0.5,
+	0,
+	0,
+	75
+)
+
+maxNotification.Size = UDim2.fromOffset(
+	285,
+	48
+)
+
+maxNotification.BackgroundColor3 =
+	Color3.fromRGB(
+		15,
+		17,
+		23
+	)
+
+maxNotification.BackgroundTransparency = 0.08
+maxNotification.BorderSizePixel = 0
+maxNotification.Visible = false
+maxNotification.ZIndex = 100
+maxNotification.Parent = screenGui
+
+local notificationCorner = Instance.new("UICorner")
+
+notificationCorner.CornerRadius =
+	UDim.new(
+		0,
+		12
+	)
+
+notificationCorner.Parent =
+	maxNotification
+
+local notificationStroke = Instance.new("UIStroke")
+
+notificationStroke.Thickness = 2
+notificationStroke.Transparency = 0.1
+
+notificationStroke.Parent =
+	maxNotification
+
+local notificationText = Instance.new("TextLabel")
+
+notificationText.Name = "NotificationText"
+
+notificationText.BackgroundTransparency = 1
+
+notificationText.Size =
+	UDim2.new(
+		1,
+		-16,
+		1,
+		0
+	)
+
+notificationText.Position =
+	UDim2.new(
+		0,
+		8,
+		0,
+		0
+	)
+
+notificationText.Font =
+	Enum.Font.GothamBlack
+
+notificationText.TextSize =
+	13
+
+notificationText.TextWrapped =
+	true
+
+notificationText.Text =
+	"🌈  LOJA NO MÁXIMO!  •  $15  💎"
+
+notificationText.TextColor3 =
+	Color3.fromRGB(
+		255,
+		255,
+		255
+	)
+
+notificationText.ZIndex =
+	101
+
+notificationText.Parent =
+	maxNotification
+
+-- =========================================================
+--               FUNÇÃO DE MENSAGEM NO CHAT
+-- =========================================================
+
+local function enviarMensagemChat()
+
+	local mensagem =
+		"🌈 Loja: preço dos tokens está no máximo"
+
+	if TextChatService.ChatVersion ==
+		Enum.ChatVersion.TextChatService then
+
+		local textChannels =
+			TextChatService:FindFirstChild("TextChannels")
+
+		if textChannels then
+
+			local general =
+				textChannels:FindFirstChild("RBXGeneral")
+
+			if general then
+
+				pcall(function()
+					general:SendAsync(mensagem)
+				end)
+
+				return
+
+			end
+
+		end
+
+	end
+
+	-- Chat antigo
+	pcall(function()
+
+		StarterGui:SetCore(
+			"ChatMakeSystemMessage",
+			{
+				Text = mensagem,
+				Font = Enum.Font.GothamBold,
+				TextSize = 18
+			}
+		)
+
+	end)
+
+end
+
+-- =========================================================
+--               ANIMAÇÃO DA NOTIFICAÇÃO
+-- =========================================================
+
+local notificationToken = 0
+
+local function mostrarNotificacaoMaximo()
+
+	notificationToken += 1
+
+	local meuToken =
+		notificationToken
+
+	maxNotification.Visible = true
+
+	maxNotification.Position =
+		UDim2.new(
+			0.5,
+			0,
+			0,
+			55
+		)
+
+	maxNotification.BackgroundTransparency =
+		1
+
+	notificationText.TextTransparency =
+		1
+
+	TweenService:Create(
+		maxNotification,
+		TweenInfo.new(
+			0.35,
+			Enum.EasingStyle.Back,
+			Enum.EasingDirection.Out
+		),
+		{
+			Position =
+				UDim2.new(
+					0.5,
+					0,
+					0,
+					75
+				),
+
+			BackgroundTransparency = 0.08
+		}
+	):Play()
+
+	TweenService:Create(
+		notificationText,
+		TweenInfo.new(
+			0.3
+		),
+		{
+			TextTransparency = 0
+		}
+	):Play()
+
+	task.spawn(function()
+
+		local hue = 0
+
+		while
+			meuToken == notificationToken
+			and maxNotification.Visible
+		do
+
+			hue =
+				(hue + 0.01) % 1
+
+			notificationStroke.Color =
+				Color3.fromHSV(
+					hue,
+					1,
+					1
+				)
+
+			notificationText.TextColor3 =
+				Color3.fromHSV(
+					(hue + 0.12) % 1,
+					0.8,
+					1
+				)
+
+			task.wait(0.03)
+
+		end
+
+	end)
+
+	task.delay(
+		4,
+		function()
+
+			if meuToken ~= notificationToken then
+				return
+			end
+
+			local outTween =
+				TweenService:Create(
+					maxNotification,
+					TweenInfo.new(
+						0.3,
+						Enum.EasingStyle.Quad,
+						Enum.EasingDirection.In
+					),
+					{
+						Position =
+							UDim2.new(
+								0.5,
+								0,
+								0,
+								55
+							),
+
+						BackgroundTransparency = 1
+					}
+				)
+
+			TweenService:Create(
+				notificationText,
+				TweenInfo.new(
+					0.2
+				),
+				{
+					TextTransparency = 1
+				}
+			):Play()
+
+			outTween:Play()
+
+			outTween.Completed:Wait()
+
+			if meuToken == notificationToken then
+				maxNotification.Visible = false
+			end
+
+		end
+	)
+
+end
+
+-- =========================================================
+--                     ESTADO MAXIMO
+-- =========================================================
+
+local maximoAtivo = false
+
+-- =========================================================
+--          CONTROLE DE ENVIO ÚNICO DA MENSAGEM
+-- =========================================================
+-- A mensagem no chat deve ser enviada apenas UMA VEZ por
+-- ativação do modo MÁXIMO (não repetir enquanto o preço
+-- permanecer em $15). Um cooldown extra por segurança evita
+-- flood caso o preço oscile rapidamente entre estados.
+
+local CHAT_COOLDOWN = 27
+
+local CHAT_COOLDOWN_ATTRIBUTE =
+	"TokenPriceWatcher_LastChatMessage"
+
+local function tentarEnviarMensagemMaximo()
+
+	local agora = os.clock()
+
+	local ultimoEnvioGlobal =
+		PlayerGui:GetAttribute(
+			CHAT_COOLDOWN_ATTRIBUTE
+		) or -math.huge
+
+	if agora - ultimoEnvioGlobal >= CHAT_COOLDOWN then
+
+		PlayerGui:SetAttribute(
+			CHAT_COOLDOWN_ATTRIBUTE,
+			agora
+		)
+
+		enviarMensagemChat()
+
+		return true
+
+	end
+
+	return false
+
+end
+
+-- =========================================================
+--       CLIQUE MANUAL: ENVIAR MENSAGEM NA HORA
+-- =========================================================
+-- Ao clicar no botão 📢, tenta mandar a mensagem imediatamente,
+-- sem esperar o preço bater no máximo. Ainda respeita o
+-- cooldown de CHAT_COOLDOWN segundos pra evitar punição por
+-- flood no chat.
+
+sendMsgButton.MouseButton1Click:Connect(function()
+
+	local enviou =
+		tentarEnviarMensagemMaximo()
+
+	if enviou then
+
+		-- Feedback visual: pisca verde ao enviar com sucesso.
+		local corOriginal =
+			sendMsgButton.BackgroundColor3
+
+		sendMsgButton.BackgroundColor3 =
+			Color3.fromRGB(60, 200, 100)
+
+		TweenService:Create(
+			sendMsgButton,
+			TweenInfo.new(0.6),
+			{ BackgroundColor3 = corOriginal }
+		):Play()
+
+	else
+
+		-- Feedback visual: pisca vermelho se ainda em cooldown.
+		local corOriginal =
+			sendMsgButton.BackgroundColor3
+
+		sendMsgButton.BackgroundColor3 =
+			Color3.fromRGB(200, 60, 60)
+
+		TweenService:Create(
+			sendMsgButton,
+			TweenInfo.new(0.6),
+			{ BackgroundColor3 = corOriginal }
+		):Play()
+
+	end
+
 end)
-Players.PlayerRemoving:Connect(removeESP)
 
-RunService.Heartbeat:Connect(function()
-    if not espEnabled then return end
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= localPlayer then
-            local obj  = espObjects[p]
-            local char = p.Character
-            if char and (not obj or not obj.hl.Parent) then
-                removeESP(p); addESP(p)
-            elseif not char and obj then
-                removeESP(p)
-            end
-        end
-    end
+local rainbowConnection = nil
+local pulseConnection = nil
+
+local function pararEfeitoMaximo()
+
+	maximoAtivo = false
+
+	aura.Visible = false
+	sparkleContainer.Visible = false
+
+	if rainbowConnection then
+
+		rainbowConnection:Disconnect()
+		rainbowConnection = nil
+
+	end
+
+	if pulseConnection then
+
+		pulseConnection:Disconnect()
+		pulseConnection = nil
+
+	end
+
+	card.Size = UDim2.fromOffset(
+		150,
+		54
+	)
+
+end
+
+local function iniciarEfeitoMaximo()
+
+	if maximoAtivo then
+		return
+	end
+
+	maximoAtivo = true
+
+	-- Mensagem enviada UMA ÚNICA VEZ, no exato momento em que
+	-- o modo MÁXIMO é ativado (transição normal -> máximo).
+	tentarEnviarMensagemMaximo()
+
+	aura.Visible = true
+	sparkleContainer.Visible = true
+
+	-- =====================================================
+	--                     RAINBOW
+	-- =====================================================
+
+	local hue = 0
+
+	rainbowConnection =
+		RunService.RenderStepped:Connect(function(dt)
+
+			if not maximoAtivo then
+				return
+			end
+
+			hue =
+				(hue + dt * 0.45) % 1
+
+			local rainbowColor =
+				Color3.fromHSV(
+					hue,
+					1,
+					1
+				)
+
+			cardStroke.Color =
+				rainbowColor
+
+			auraStroke.Color =
+				rainbowColor
+
+			badgeStroke.Color =
+				rainbowColor
+
+			progressBar.BackgroundColor3 =
+				rainbowColor
+
+			statusBadge.BackgroundColor3 =
+				rainbowColor
+
+			priceLabel.TextColor3 =
+				rainbowColor
+
+			shine.BackgroundColor3 =
+				rainbowColor
+
+		end)
+
+	-- =====================================================
+	--                     PULSAÇÃO
+	-- =====================================================
+
+	local pulseTime = 0
+
+	pulseConnection =
+		RunService.RenderStepped:Connect(function(dt)
+
+			if not maximoAtivo then
+				return
+			end
+
+			pulseTime += dt * 4
+
+			local wave =
+				(math.sin(pulseTime) + 1) / 2
+
+			local scale =
+				1 + (wave * 0.035)
+
+			card.Size =
+				UDim2.fromOffset(
+					150 * scale,
+					54 * scale
+				)
+
+			cardStroke.Thickness =
+				1.2 + wave * 2
+
+			cardStroke.Transparency =
+				0.15 + wave * 0.25
+
+			auraStroke.Transparency =
+				0.45 + wave * 0.3
+
+		end)
+
+	-- =====================================================
+	--                  ANIMAÇÃO DA FAIXA
+	-- =====================================================
+
+	task.spawn(function()
+
+		while maximoAtivo and card.Parent do
+
+			shine.Position =
+				UDim2.new(
+					-0.5,
+					0,
+					0,
+					0
+				)
+
+			local tween =
+				TweenService:Create(
+					shine,
+					TweenInfo.new(
+						1.1,
+						Enum.EasingStyle.Linear
+					),
+					{
+						Position =
+							UDim2.new(
+								1.2,
+								0,
+								0,
+								0
+							)
+					}
+				)
+
+			tween:Play()
+
+			tween.Completed:Wait()
+
+			task.wait(0.25)
+
+		end
+
+	end)
+
+	-- =====================================================
+	--                    SPARKLES
+	-- =====================================================
+
+	task.spawn(function()
+
+		while maximoAtivo and card.Parent do
+
+			for _, sparkle in ipairs(sparkles) do
+
+				if not maximoAtivo then
+					break
+				end
+
+				sparkle.Visible = true
+
+				sparkle.Position =
+					UDim2.new(
+						math.random(),
+						0,
+						math.random(),
+						0
+					)
+
+				sparkle.TextTransparency = 0
+
+				local finalPos =
+					sparkle.Position
+
+				local tween =
+					TweenService:Create(
+						sparkle,
+						TweenInfo.new(
+							0.6,
+							Enum.EasingStyle.Quad,
+							Enum.EasingDirection.Out
+						),
+						{
+							Position =
+								UDim2.new(
+									finalPos.X.Scale,
+									finalPos.X.Offset,
+									finalPos.Y.Scale - 0.25,
+									finalPos.Y.Offset
+								),
+
+							TextTransparency = 1,
+
+							TextSize =
+								math.random(14, 22)
+						}
+					)
+
+				tween:Play()
+
+				task.wait(0.08)
+
+			end
+
+			task.wait(0.15)
+
+		end
+
+	end)
+
+end
+
+-- =========================================================
+--                    INTERAÇÃO DE CLIQUE
+-- =========================================================
+
+card.MouseButton1Down:Connect(function()
+
+	TweenService:Create(
+		card,
+		TweenInfo.new(
+			0.08
+		),
+		{
+			Size =
+				UDim2.fromOffset(
+					145,
+					52
+				)
+		}
+	):Play()
+
 end)
 
--- ============================================================
---  LISTA DE JOGADORES
--- ============================================================
-makeSectionLabel("  👥  JOGADORES")
+card.MouseButton1Up:Connect(function()
 
-local playerListFrame = Instance.new("Frame")
-playerListFrame.Size              = UDim2.new(1, 0, 0, 10)
-playerListFrame.BackgroundTransparency = 1
-playerListFrame.AutomaticSize    = Enum.AutomaticSize.Y
-playerListFrame.Parent           = contentFrame
+	if maximoAtivo then
 
-local plLayout = Instance.new("UIListLayout")
-plLayout.SortOrder = Enum.SortOrder.LayoutOrder
-plLayout.Padding   = UDim.new(0, 4)
-plLayout.Parent    = playerListFrame
+		TweenService:Create(
+			card,
+			TweenInfo.new(
+				0.08
+			),
+			{
+				Size =
+					UDim2.fromOffset(
+						153,
+						55
+					)
+			}
+		):Play()
 
-local playerButtons = {}
+	else
 
--- ---- Mini-menu ----
-local actionMenu = Instance.new("Frame")
-actionMenu.Name             = "ActionMenu"
-actionMenu.Size             = UDim2.new(0, 200, 0, 10)
-actionMenu.BackgroundColor3 = Color3.fromRGB(10, 10, 22)
-actionMenu.BorderSizePixel  = 0
-actionMenu.AutomaticSize    = Enum.AutomaticSize.Y
-actionMenu.Visible          = false
-actionMenu.ZIndex           = 20
-actionMenu.Parent           = screenGui
+		TweenService:Create(
+			card,
+			TweenInfo.new(
+				0.08
+			),
+			{
+				Size =
+					UDim2.fromOffset(
+						150,
+						54
+					)
+			}
+		):Play()
 
-do
-    local ac = Instance.new("UICorner"); ac.CornerRadius = UDim.new(0,10); ac.Parent = actionMenu
-    local as = Instance.new("UIStroke"); as.Color = Color3.fromRGB(0,200,255); as.Thickness = 1.5; as.Parent = actionMenu
-    local al = Instance.new("UIListLayout"); al.Padding = UDim.new(0,4); al.Parent = actionMenu
-    local ap = Instance.new("UIPadding"); ap.PaddingAll = UDim.new(0,6); ap.Parent = actionMenu
+	end
+
+	if OpenTokenExchange then
+
+		if OpenTokenExchange:IsA(
+			"RemoteEvent"
+		) then
+
+			OpenTokenExchange:FireServer()
+
+		elseif OpenTokenExchange:IsA(
+			"BindableEvent"
+		) then
+
+			OpenTokenExchange:Fire()
+
+		end
+
+	end
+
+end)
+
+-- =========================================================
+--                         HOVER
+-- =========================================================
+
+card.MouseEnter:Connect(function()
+
+	TweenService:Create(
+		card,
+		TweenInfo.new(
+			0.2
+		),
+		{
+			BackgroundTransparency =
+				0.12
+		}
+	):Play()
+
+	if not maximoAtivo then
+
+		TweenService:Create(
+			cardStroke,
+			TweenInfo.new(
+				0.2
+			),
+			{
+				Transparency =
+					0.35
+			}
+		):Play()
+
+	end
+
+end)
+
+card.MouseLeave:Connect(function()
+
+	TweenService:Create(
+		card,
+		TweenInfo.new(
+			0.2
+		),
+		{
+			BackgroundTransparency =
+				0.25
+		}
+	):Play()
+
+	if not maximoAtivo then
+
+		TweenService:Create(
+			cardStroke,
+			TweenInfo.new(
+				0.2
+			),
+			{
+				Transparency =
+					0.8
+			}
+		):Play()
+
+		TweenService:Create(
+			card,
+			TweenInfo.new(
+				0.08
+			),
+			{
+				Size =
+					UDim2.fromOffset(
+						150,
+						54
+					)
+			}
+		):Play()
+
+	end
+
+end)
+
+-- =========================================================
+--                  ANIMAÇÃO DO PREÇO
+-- =========================================================
+
+local lastPrice = PRICE_BASE
+
+local function animatePriceBounce()
+
+	local tweenUp =
+		TweenService:Create(
+			priceLabel,
+			TweenInfo.new(
+				0.1,
+				Enum.EasingStyle.Quad,
+				Enum.EasingDirection.Out
+			),
+			{
+				TextSize = 17
+			}
+		)
+
+	local tweenDown =
+		TweenService:Create(
+			priceLabel,
+			TweenInfo.new(
+				0.15,
+				Enum.EasingStyle.Back,
+				Enum.EasingDirection.Out
+			),
+			{
+				TextSize = 15
+			}
+		)
+
+	tweenUp:Play()
+
+	tweenUp.Completed:Connect(function()
+
+		tweenDown:Play()
+
+	end)
+
 end
 
-local actionTarget = nil
+-- =========================================================
+--                      TEMA NORMAL
+-- =========================================================
 
-local function makeActionBtn(txt, color, cb)
-    local b = Instance.new("TextButton")
-    b.Size             = UDim2.new(1,0,0,34)
-    b.BackgroundColor3 = Color3.fromRGB(22,22,38)
-    b.Text             = txt
-    b.TextColor3       = color or Color3.new(1,1,1)
-    b.Font             = Enum.Font.GothamSemibold
-    b.TextSize         = 13
-    b.BorderSizePixel  = 0
-    b.ZIndex           = 21
-    b.Parent           = actionMenu
-    local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0,7); bc.Parent = b
-    b.MouseButton1Click:Connect(function()
-        actionMenu.Visible = false
-        if cb then cb(actionTarget) end
-    end)
-    return b
+local function applyTheme(
+	themeColor,
+	strokeTransparency,
+	badgeText
+)
+
+	TweenService:Create(
+		progressBar,
+		TweenInfo.new(
+			0.3,
+			Enum.EasingStyle.Quad,
+			Enum.EasingDirection.Out
+		),
+		{
+			BackgroundColor3 =
+				themeColor
+		}
+	):Play()
+
+	TweenService:Create(
+		cardStroke,
+		TweenInfo.new(
+			0.3,
+			Enum.EasingStyle.Quad,
+			Enum.EasingDirection.Out
+		),
+		{
+			Color = themeColor,
+			Transparency =
+				strokeTransparency
+		}
+	):Play()
+
+	TweenService:Create(
+		statusBadge,
+		TweenInfo.new(
+			0.3,
+			Enum.EasingStyle.Quad,
+			Enum.EasingDirection.Out
+		),
+		{
+			BackgroundColor3 =
+				themeColor
+		}
+	):Play()
+
+	TweenService:Create(
+		priceLabel,
+		TweenInfo.new(
+			0.3,
+			Enum.EasingStyle.Quad,
+			Enum.EasingDirection.Out
+		),
+		{
+			TextColor3 =
+				themeColor
+		}
+	):Play()
+
+	statusBadge.Text =
+		badgeText
+
+	statusBadge.TextColor3 =
+		Color3.fromRGB(
+			255,
+			255,
+			255
+		)
+
 end
 
--- ---- Sentar na cabeça ----
-local function sitOnHead(target)
-    if not target or target == localPlayer then return end
-    local myChar  = localPlayer.Character
-    local tarChar = target.Character
-    if not myChar or not tarChar then return end
-    local myRoot  = myChar:FindFirstChild("HumanoidRootPart")
-    local tarHead = tarChar:FindFirstChild("Head")
-    if not myRoot or not tarHead then return end
+-- =========================================================
+--                    FORMATAR NÚMEROS
+-- =========================================================
 
-    if seatWeld then seatWeld:Destroy(); seatWeld = nil end
+local function formatNumber(number)
 
-    local weld = Instance.new("WeldConstraint")
-    weld.Part0  = myRoot
-    weld.Part1  = tarHead
-    weld.Parent = myRoot
+	number = tonumber(number) or 0
 
-    myRoot.CFrame   = tarHead.CFrame * CFrame.new(0, 3, 0)
-    seatWeld        = weld
-    sittingOnPlayer = target
+	local unidades = {
+		{1e63, "Vg"},
+		{1e60, "No"},
+		{1e57, "Oc"},
+		{1e54, "Spd"},
+		{1e51, "Sxd"},
+		{1e48, "Qid"},
+		{1e45, "Qad"},
+		{1e42, "Td"},
+		{1e39, "Dd"},
+		{1e36, "Ud"},
+		{1e33, "Dc"},
+		{1e30, "No"},
+		{1e27, "Oc"},
+		{1e24, "Sp"},
+		{1e21, "Sx"},
+		{1e18, "Qi"},
+		{1e15, "Qa"},
+		{1e12, "T"},
+		{1e9, "B"},
+		{1e6, "M"},
+		{1e3, "K"},
+	}
 
-    local hum = myChar:FindFirstChildOfClass("Humanoid")
-    if hum then
-        local conn
-        conn = hum.Jumping:Connect(function(isJumping)
-            if isJumping and seatWeld then
-                seatWeld:Destroy()
-                seatWeld        = nil
-                sittingOnPlayer = nil
-                conn:Disconnect()
-            end
-        end)
-    end
+	local negativo = number < 0
+	local absoluto = math.abs(number)
+
+	for _, unidade in ipairs(unidades) do
+
+		if absoluto >= unidade[1] then
+
+			local valor = absoluto / unidade[1]
+
+			local casas =
+				valor >= 100 and 0
+				or (valor >= 10 and 1 or 2)
+
+			local texto =
+				string.format(
+					"%." .. casas .. "f",
+					valor
+				)
+
+			texto =
+				texto
+				:gsub("(%..-)0+$", "%1")
+				:gsub("%.$", "")
+
+			if negativo then
+				texto = "-" .. texto
+			end
+
+			return texto .. unidade[2]
+
+		end
+
+	end
+
+	return tostring(
+		math.floor(number + 0.5)
+	)
+
 end
 
-makeActionBtn("🪑 Sentar na cabeça", Color3.fromRGB(255,200,50), sitOnHead)
+-- =========================================================
+--                     ATUALIZAR DISPLAY
+-- =========================================================
 
--- ---- Texto Rainbow ----
-local rainbowTags = {}
+local function updateDisplay()
 
-local function applyRainbow(target)
-    local inputGui = Instance.new("ScreenGui")
-    inputGui.ResetOnSpawn = false
-    inputGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    inputGui.Parent = localPlayer.PlayerGui
+	local rawPrice =
+		readNumber(
+			Workspace:GetAttribute(
+				"TokenPrice"
+			),
+			PRICE_BASE
+		)
 
-    local bg = Instance.new("Frame", inputGui)
-    bg.Size             = UDim2.new(0, 300, 0, 110)
-    bg.Position         = UDim2.new(0.5, -150, 0.5, -55)
-    bg.BackgroundColor3 = Color3.fromRGB(10,10,22)
-    bg.BorderSizePixel  = 0
-    Instance.new("UICorner", bg).CornerRadius = UDim.new(0,12)
-    local bgs = Instance.new("UIStroke", bg); bgs.Color = Color3.fromRGB(0,200,255); bgs.Thickness = 2
+	-- "price" continua arredondado pra baixo, só para exibição
+	-- do preço (ex: "$14"), igual já era antes.
+	local price =
+		math.floor(rawPrice)
 
-    local lbl = Instance.new("TextLabel", bg)
-    lbl.Size               = UDim2.new(1,0,0,30)
-    lbl.Position           = UDim2.new(0,0,0,6)
-    lbl.BackgroundTransparency = 1
-    lbl.Text               = "✏️  Digite o texto rainbow:"
-    lbl.TextColor3         = Color3.new(1,1,1)
-    lbl.Font               = Enum.Font.GothamBold
-    lbl.TextSize           = 13
+	local tokenAmount =
+		lerQuantidadeTokens()
 
-    local tb = Instance.new("TextBox", bg)
-    tb.Size             = UDim2.new(1,-20,0,32)
-    tb.Position         = UDim2.new(0,10,0,38)
-    tb.BackgroundColor3 = Color3.fromRGB(22,22,40)
-    tb.BorderSizePixel  = 0
-    tb.PlaceholderText  = "seu texto aqui..."
-    tb.Text             = ""
-    tb.TextColor3       = Color3.new(1,1,1)
-    tb.Font             = Enum.Font.Gotham
-    tb.TextSize         = 14
-    tb.ClearTextOnFocus = false
-    Instance.new("UICorner", tb).CornerRadius = UDim.new(0,7)
+	-- "valorReceber" usa o preço EXATO (com decimais), igual
+	-- o jogo faz na hora de vender, para bater certinho com o
+	-- valor mostrado no modal "Vender todos por $X".
+	local valorReceber =
+		tokenAmount * rawPrice
 
-    local confirm = Instance.new("TextButton", bg)
-    confirm.Size             = UDim2.new(0,80,0,28)
-    confirm.Position         = UDim2.new(0.5,-40,1,-34)
-    confirm.BackgroundColor3 = Color3.fromRGB(0,170,230)
-    confirm.Text             = "Confirmar"
-    confirm.TextColor3       = Color3.new(1,1,1)
-    confirm.Font             = Enum.Font.GothamBold
-    confirm.TextSize         = 12
-    confirm.BorderSizePixel  = 0
-    Instance.new("UICorner", confirm).CornerRadius = UDim.new(0,7)
+	earningsLabel.Text =
+		("💎 Tokens: %s  •  💰 Receber: $%s"):format(
+			formatNumber(tokenAmount),
+			formatNumber(valorReceber)
+		)
 
-    confirm.MouseButton1Click:Connect(function()
-        local msg = tb.Text
-        inputGui:Destroy()
-        if msg == "" then return end
+	if price ~= lastPrice then
+		animatePriceBounce()
+	end
 
-        if rainbowTags[target] then
-            if rainbowTags[target].bb then rainbowTags[target].bb:Destroy() end
-            if rainbowTags[target].conn then rainbowTags[target].conn:Disconnect() end
-            rainbowTags[target] = nil
-        end
+	local trendSymbol = ""
 
-        local function getChar()
-            return target == localPlayer and localPlayer.Character or target.Character
-        end
+	if price > lastPrice then
 
-        local function createBillboard()
-            local char = getChar()
-            if not char then return end
-            local head = char:FindFirstChild("Head")
-            if not head then return end
+		trendSymbol = " ▲"
 
-            local bbg = Instance.new("BillboardGui")
-            bbg.Adornee      = head
-            bbg.Size         = UDim2.new(0, 200, 0, 40)
-            bbg.StudsOffset  = Vector3.new(0, 2.8, 0)
-            bbg.AlwaysOnTop  = true
-            bbg.ResetOnSpawn = false
-            bbg.Parent       = localPlayer.PlayerGui
+	elseif price < lastPrice then
 
-            local tl = Instance.new("TextLabel", bbg)
-            tl.Size               = UDim2.new(1,0,1,0)
-            tl.BackgroundTransparency = 1
-            tl.Text               = msg
-            tl.Font               = Enum.Font.GothamBold
-            tl.TextSize           = 18
-            tl.TextStrokeTransparency = 0
+		trendSymbol = " ▼"
 
-            local hue   = 0
-            local conn2 = RunService.Heartbeat:Connect(function(dt)
-                hue = (hue + dt * 0.5) % 1
-                tl.TextColor3 = Color3.fromHSV(hue, 1, 1)
-            end)
+	end
 
-            rainbowTags[target] = { bb = bbg, conn = conn2 }
-        end
+	priceLabel.Text =
+		("$%d%s"):format(
+			price,
+			trendSymbol
+		)
 
-        createBillboard()
+	-- =====================================================
+	--                     PREÇO 15
+	-- =====================================================
 
-        target.CharacterAdded:Connect(function()
-            task.wait(1)
-            if rainbowTags[target] then
-                if rainbowTags[target].bb then rainbowTags[target].bb:Destroy() end
-                if rainbowTags[target].conn then rainbowTags[target].conn:Disconnect() end
-            end
-            createBillboard()
-        end)
-    end)
+	if price >= PRICE_MAX then
+
+		statusBadge.Text =
+			"⚡ MÁXIMO"
+
+		statusBadge.TextColor3 =
+			Color3.fromRGB(
+				255,
+				255,
+				255
+			)
+
+		if not maximoAtivo then
+
+			-- Isso dispara os efeitos visuais, a notificação
+			-- E a única mensagem de chat (dentro de iniciarEfeitoMaximo)
+			iniciarEfeitoMaximo()
+
+			mostrarNotificacaoMaximo()
+
+		end
+
+		-- A mensagem de chat NÃO é reenviada aqui.
+		-- Ela só acontece uma vez, na transição para o modo máximo,
+		-- dentro de iniciarEfeitoMaximo().
+
+	-- =====================================================
+	--                     PREÇO ALTO
+	-- =====================================================
+
+	elseif price >= PRICE_SPIKE then
+
+		if maximoAtivo then
+			pararEfeitoMaximo()
+		end
+
+		applyTheme(
+			COLOR_THEMES.Spike,
+			0.4,
+			"🔥 ALTO"
+		)
+
+	-- =====================================================
+	--                     PREÇO MÍNIMO
+	-- =====================================================
+
+	elseif price <= PRICE_MIN then
+
+		if maximoAtivo then
+			pararEfeitoMaximo()
+		end
+
+		applyTheme(
+			COLOR_THEMES.Min,
+			0.4,
+			"📉 MÍNIMO"
+		)
+
+	-- =====================================================
+	--                     NORMAL
+	-- =====================================================
+
+	else
+
+		if maximoAtivo then
+			pararEfeitoMaximo()
+		end
+
+		applyTheme(
+			COLOR_THEMES.Base,
+			0.8,
+			"NORMAL"
+		)
+
+	end
+
+	lastPrice = price
+
 end
 
-makeActionBtn("🌈 Texto Rainbow", Color3.fromRGB(180,100,255), applyRainbow)
-makeActionBtn("❌ Fechar menu",    Color3.fromRGB(200,60,60),   function() actionMenu.Visible = false end)
+-- =========================================================
+--                         TIMER
+-- =========================================================
 
--- ---- Lista de jogadores ----
-local function clearPlayerList()
-    for _, b in pairs(playerButtons) do b:Destroy() end
-    playerButtons = {}
-end
+task.spawn(function()
 
-local function buildPlayerList()
-    clearPlayerList()
-    for _, p in ipairs(Players:GetPlayers()) do
-        local isMe = (p == localPlayer)
-        local btn  = Instance.new("TextButton")
-        btn.Size             = UDim2.new(1, 0, 0, 36)
-        btn.BackgroundColor3 = isMe and Color3.fromRGB(0,80,130) or Color3.fromRGB(20,20,32)
-        btn.BorderSizePixel  = 0
-        btn.Text             = (isMe and "🟢 " or "🔵 ") .. p.Name .. (isMe and "  (você)" or "")
-        btn.TextColor3       = Color3.new(1,1,1)
-        btn.Font             = Enum.Font.Gotham
-        btn.TextSize         = 13
-        btn.ZIndex           = 10
-        btn.Parent           = playerListFrame
-        Instance.new("UICorner", btn).CornerRadius = UDim.new(0,7)
+	while screenGui.Parent do
 
-        btn.MouseButton1Click:Connect(function()
-            actionTarget        = p
-            actionMenu.Position = UDim2.new(0, btn.AbsolutePosition.X + 10,
-                                            0, btn.AbsolutePosition.Y - 10)
-            actionMenu.Visible  = true
-        end)
-        table.insert(playerButtons, btn)
-    end
-end
-buildPlayerList()
-Players.PlayerAdded:Connect(function()   task.wait(0.5); buildPlayerList() end)
-Players.PlayerRemoving:Connect(function() task.wait(0.5); buildPlayerList() end)
+		local now = os.time()
 
--- ============================================================
---  ANIMAÇÃO INICIAL
--- ============================================================
-panel.Size     = UDim2.new(0, 0, 0, 0)
-panel.Position = UDim2.new(0.5, 0, 0.5, 0)
-panel.Visible  = true
-TweenService:Create(panel, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-    Size     = UDim2.new(0, 320, 0, 420),
-    Position = UDim2.new(0.5, -160, 0.5, -210),
-}):Play()
+		local secondsLeft =
+			EPOCH_SECONDS -
+			(now % EPOCH_SECONDS)
 
-print("[SamMods] Script carregado com sucesso!")
+		local progress =
+			secondsLeft /
+			EPOCH_SECONDS
+
+		timerLabel.Text =
+			("Troca em %ds"):format(
+				secondsLeft
+			)
+
+		TweenService:Create(
+			progressBar,
+			TweenInfo.new(
+				0.5,
+				Enum.EasingStyle.Linear
+			),
+			{
+				Size =
+					UDim2.new(
+						progress,
+						0,
+						1,
+						0
+					)
+			}
+		):Play()
+
+		updateDisplay()
+
+		task.wait(0.5)
+
+	end
+
+end)
+
+-- =========================================================
+--                 ALTERAÇÃO DO TOKEN PRICE
+-- =========================================================
+
+Workspace:GetAttributeChangedSignal(
+	"TokenPrice"
+):Connect(
+	updateDisplay
+)
+
+-- =========================================================
+--          ATUALIZAÇÃO EM TEMPO REAL DOS TOKENS
+-- =========================================================
+
+LocalPlayer:GetAttributeChangedSignal(
+	"Tokens"
+):Connect(function()
+
+	lastReadTokenAmount =
+		lerQuantidadeTokens()
+
+	updateDisplay()
+
+end)
+
+-- =========================================================
+--                     INICIALIZAÇÃO
+-- =========================================================
+
+updateDisplay()
