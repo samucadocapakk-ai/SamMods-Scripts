@@ -463,11 +463,146 @@ end
 -- =========================================================
 --              LEITURA REAL DOS TOKENS
 -- =========================================================
+-- Em vez de depender só do atributo "Tokens" (que pode não
+-- existir ou não bater com o que a interface do jogo mostra),
+-- procuramos em TODA a interface (PlayerGui) por um texto que
+-- contenha "Tokens" e leia o valor escrito nele, seja um
+-- número normal (264, 75) ou abreviado (2.54T, 691.4B, etc).
+-- Isso deixa o script robusto contra qualquer formato que o
+-- jogo use, sem precisar caçar o caminho exato do texto.
+
+-- Tabela de conversão: abreviação -> multiplicador real.
+-- Baseada nas mesmas abreviações que usamos pra EXIBIR os
+-- números (função formatNumber mais abaixo), na ordem certa
+-- pra "desfazer" a abreviação.
+local UNIDADES_REVERSO = {
+	K = 1e3,
+	M = 1e6,
+	B = 1e9,
+	T = 1e12,
+	Qa = 1e15,
+	Qi = 1e18,
+	Sx = 1e21,
+	Sp = 1e24,
+	Oc = 1e27,
+	No = 1e30,
+	Dc = 1e33,
+	Ud = 1e36,
+	Dd = 1e39,
+	Td = 1e42,
+	Qad = 1e45,
+	Qid = 1e48,
+	Sxd = 1e51,
+	Spd = 1e54,
+	Vg = 1e63,
+}
+
+-- Nomes das nossas próprias interfaces, pra NUNCA ler texto
+-- delas mesmas (evita loop: nosso card também escreve "Tokens").
+local NOSSAS_GUIS = {
+	TokenPriceWatcherGui = true,
+	SamModsIntroGui = true,
+}
+
+local function ehNossaGui(instancia)
+
+	local atual = instancia
+
+	while atual and atual.Parent ~= PlayerGui do
+		atual = atual.Parent
+	end
+
+	return atual ~= nil and NOSSAS_GUIS[atual.Name] == true
+
+end
+
+-- Converte um texto tipo "Tokens: 2.54T" ou "💎 691.4B" no
+-- número real (2540000000000, 691400000000, etc).
+local function parseValorAbreviado(texto)
+
+	if not texto then
+		return nil
+	end
+
+	local numeroStr, sufixo =
+		texto:match("(%-?%d+[%.,]?%d*)%s*(%a*)")
+
+	if not numeroStr then
+		return nil
+	end
+
+	numeroStr = numeroStr:gsub(",", ".")
+
+	local numero = tonumber(numeroStr)
+
+	if not numero then
+		return nil
+	end
+
+	local multiplicador = UNIDADES_REVERSO[sufixo]
+
+	if multiplicador then
+		return numero * multiplicador
+	end
+
+	-- Sem sufixo reconhecido: assume número já é o valor exato
+	-- (ex: "264", "75").
+	if sufixo == "" or sufixo == nil then
+		return numero
+	end
+
+	return nil
+
+end
+
+-- Guarda o texto encontrado pra não escanear a interface
+-- inteira toda hora; só re-escaneia se o objeto sumir.
+local tokensLabelCache = nil
+
+local function encontrarLabelDeTokens()
+
+	if tokensLabelCache and tokensLabelCache.Parent then
+		return tokensLabelCache
+	end
+
+	for _, obj in ipairs(PlayerGui:GetDescendants()) do
+
+		if (obj:IsA("TextLabel") or obj:IsA("TextButton"))
+			and obj.Text
+			and obj.Text:lower():find("token")
+			and not ehNossaGui(obj) then
+
+			tokensLabelCache = obj
+			return obj
+
+		end
+
+	end
+
+	return nil
+
+end
 
 local lastReadTokenAmount = nil
 
 local function lerQuantidadeTokens()
+
+	local label = encontrarLabelDeTokens()
+
+	if label then
+
+		local valor = parseValorAbreviado(label.Text)
+
+		if valor then
+			return valor
+		end
+
+	end
+
+	-- Fallback: se não achou nenhum texto de tokens na
+	-- interface, volta a usar o atributo como antes.
 	return tonumber(LocalPlayer:GetAttribute("Tokens")) or 0
+
 end
 
 -- =========================================================
