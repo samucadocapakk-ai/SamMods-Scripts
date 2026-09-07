@@ -2249,6 +2249,259 @@ local function formatNumber(number)
 	)
 
 end
+
+-- =========================================================
+--        DESTAQUE (ESP) DE QUEM ESTÁ TE ROUBANDO
+-- =========================================================
+-- Só aparece no jogador que está tentando hackear SUA base
+-- agora. Sem travar em ninguém (não é aimbot, é só visual):
+-- highlight rainbow + foto do avatar + distância em tempo
+-- real. Some sozinho quando o hack acaba.
+
+local MEU_ID_DONO = 4290770735
+
+local hackerEspHighlight = nil
+local hackerEspGui = nil
+local hackerEspToken = 0
+local hackerEspHueConn = nil
+local hackerEspUpdateConn = nil
+
+local function limparHackerEsp()
+
+	hackerEspToken += 1
+
+	if hackerEspHighlight then
+		hackerEspHighlight:Destroy()
+		hackerEspHighlight = nil
+	end
+
+	if hackerEspGui then
+		hackerEspGui:Destroy()
+		hackerEspGui = nil
+	end
+
+	if hackerEspHueConn then
+		hackerEspHueConn:Disconnect()
+		hackerEspHueConn = nil
+	end
+
+	if hackerEspUpdateConn then
+		hackerEspUpdateConn:Disconnect()
+		hackerEspUpdateConn = nil
+	end
+
+end
+
+local function mostrarHackerEsp(userId)
+
+	if not userId or userId == 0 then
+		return
+	end
+
+	limparHackerEsp()
+
+	local jogador = Players:GetPlayerByUserId(userId)
+
+	if not jogador then
+		return
+	end
+
+	local personagem = jogador.Character or jogador.CharacterAdded:Wait()
+	local root = personagem:WaitForChild("HumanoidRootPart", 5)
+
+	if not root then
+		return
+	end
+
+	hackerEspToken += 1
+	local meuToken = hackerEspToken
+
+	local highlight = Instance.new("Highlight")
+	highlight.FillTransparency = 0.75
+	highlight.OutlineTransparency = 0
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Parent = personagem
+	hackerEspHighlight = highlight
+
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "HackerEspGui"
+	gui.Adornee = root
+	gui.Size = UDim2.fromOffset(90, 100)
+	gui.StudsOffset = Vector3.new(0, 3.2, 0)
+	gui.AlwaysOnTop = true
+	gui.MaxDistance = 500
+	gui.Parent = personagem
+	hackerEspGui = gui
+
+	local avatar = Instance.new("ImageLabel")
+	avatar.AnchorPoint = Vector2.new(0.5, 0)
+	avatar.Position = UDim2.new(0.5, 0, 0, 0)
+	avatar.Size = UDim2.fromOffset(46, 46)
+	avatar.BackgroundColor3 = Color3.fromRGB(15, 17, 22)
+	avatar.BackgroundTransparency = 0.15
+	avatar.Image = ("rbxthumb://type=AvatarHeadShot&id=%d&w=100&h=100"):format(userId)
+	avatar.Parent = gui
+
+	local avatarCorner = Instance.new("UICorner")
+	avatarCorner.CornerRadius = UDim.new(0.5, 0)
+	avatarCorner.Parent = avatar
+
+	local avatarStroke = Instance.new("UIStroke")
+	avatarStroke.Thickness = 2.5
+	avatarStroke.Parent = avatar
+
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.AnchorPoint = Vector2.new(0.5, 0)
+	nameLabel.Position = UDim2.new(0.5, 0, 0, 48)
+	nameLabel.Size = UDim2.new(1.6, 0, 0, 18)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Font = Enum.Font.GothamBlack
+	nameLabel.TextSize = 14
+	nameLabel.Text = jogador.Name
+	nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	nameLabel.Parent = gui
+
+	local nameStroke = Instance.new("UIStroke")
+	nameStroke.Thickness = 2
+	nameStroke.Parent = nameLabel
+
+	local distLabel = Instance.new("TextLabel")
+	distLabel.AnchorPoint = Vector2.new(0.5, 0)
+	distLabel.Position = UDim2.new(0.5, 0, 0, 66)
+	distLabel.Size = UDim2.new(1.6, 0, 0, 16)
+	distLabel.BackgroundTransparency = 1
+	distLabel.Font = Enum.Font.GothamBold
+	distLabel.TextSize = 12
+	distLabel.Text = "-- studs"
+	distLabel.TextColor3 = Color3.fromRGB(230, 230, 235)
+	distLabel.Parent = gui
+
+	local distStroke = Instance.new("UIStroke")
+	distStroke.Thickness = 1.5
+	distStroke.Parent = distLabel
+
+	local hue = 0
+
+	hackerEspHueConn = RunService.RenderStepped:Connect(function(dt)
+
+		if hackerEspToken ~= meuToken then
+			return
+		end
+
+		hue = (hue + dt * 0.5) % 1
+		local cor = Color3.fromHSV(hue, 1, 1)
+
+		highlight.OutlineColor = cor
+		highlight.FillColor = cor
+		avatarStroke.Color = cor
+		nameStroke.Color = cor
+
+	end)
+
+	hackerEspUpdateConn = RunService.Heartbeat:Connect(function()
+
+		if hackerEspToken ~= meuToken then
+			return
+		end
+
+		local meuRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+		local alvoRoot = personagem:FindFirstChild("HumanoidRootPart")
+
+		if meuRoot and alvoRoot then
+			distLabel.Text = ("%d studs"):format(math.floor((meuRoot.Position - alvoRoot.Position).Magnitude))
+		end
+
+	end)
+
+end
+
+-- =========================================================
+--          TAG DE DONO/USUÁRIO ACIMA DA CABEÇA
+-- =========================================================
+-- Só você vê isso (script local): quem for o ID 4290770735
+-- ganha uma tag rainbow "DONO"; todo o resto ganha uma tag
+-- cinza simples de "Usuário".
+
+local function aplicarTagJogador(jogador)
+
+	local function colocarTag(personagem)
+
+		local root = personagem:WaitForChild("HumanoidRootPart", 5)
+
+		if not root then
+			return
+		end
+
+		local existente = personagem:FindFirstChild("SamModsTag")
+		if existente then
+			existente:Destroy()
+		end
+
+		local gui = Instance.new("BillboardGui")
+		gui.Name = "SamModsTag"
+		gui.Adornee = root
+		gui.Size = UDim2.fromOffset(120, 20)
+		gui.StudsOffset = Vector3.new(0, 3, 0)
+		gui.AlwaysOnTop = true
+		gui.MaxDistance = 120
+		gui.Parent = personagem
+
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.fromScale(1, 1)
+		label.BackgroundTransparency = 1
+		label.Font = Enum.Font.GothamBlack
+		label.TextSize = 13
+		label.Parent = gui
+
+		local stroke = Instance.new("UIStroke")
+		stroke.Thickness = 1.5
+		stroke.Parent = label
+
+		local ehDono = jogador.UserId == MEU_ID_DONO
+
+		label.Text = ehDono and "★ DONO ★" or "Usuário"
+
+		if ehDono then
+
+			task.spawn(function()
+
+				local hue = 0
+
+				while gui.Parent do
+
+					hue = (hue + 0.01) % 1
+					local cor = Color3.fromHSV(hue, 1, 1)
+					label.TextColor3 = cor
+					stroke.Color = cor
+					task.wait(0.03)
+
+				end
+
+			end)
+
+		else
+
+			label.TextColor3 = Color3.fromRGB(160, 160, 165)
+			stroke.Color = Color3.fromRGB(30, 30, 32)
+
+		end
+
+	end
+
+	if jogador.Character then
+		colocarTag(jogador.Character)
+	end
+
+	jogador.CharacterAdded:Connect(colocarTag)
+
+end
+
+for _, jogador in ipairs(Players:GetPlayers()) do
+	aplicarTagJogador(jogador)
+end
+
+Players.PlayerAdded:Connect(aplicarTagJogador)
+
 HackEvent.OnClientEvent:Connect(function(data)
 
 	if typeof(data) ~= "table" then
@@ -2302,6 +2555,7 @@ HackEvent.OnClientEvent:Connect(function(data)
 		if role == "victim" then
 
 			iniciarAlerta()
+			mostrarHackerEsp(tonumber(data.userId))
 
 		elseif role == "attacker" then
 
@@ -2325,6 +2579,7 @@ HackEvent.OnClientEvent:Connect(function(data)
 
 	if data.kind == "result" then
 		pararAlerta()
+		limparHackerEsp()
 		return
 	end
 
@@ -2335,6 +2590,7 @@ HackEvent.OnClientEvent:Connect(function(data)
 		or data.kind == "finished" then
 
 		pararAlerta()
+		limparHackerEsp()
 		return
 	end
 
@@ -2551,63 +2807,6 @@ LocalPlayer:GetAttributeChangedSignal(
 	updateDisplay()
 
 end)
-
--- =========================================================
---              SISTEMA TAG DONO (RAINBOW)
--- =========================================================
-
-local OWNER_USER_ID = 4290770735
-
-local function aplicarTagDono(player)
-	if player.UserId ~= OWNER_USER_ID then return end
-
-	local function setupCharacter(character)
-		local head = character:WaitForChild("Head", 10)
-		if not head then return end
-
-		local oldTag = head:FindFirstChild("DonoRainbowTag")
-		if oldTag then oldTag:Destroy() end
-
-		local billboard = Instance.new("BillboardGui")
-		billboard.Name = "DonoRainbowTag"
-		billboard.Size = UDim2.new(0, 200, 0, 50)
-		billboard.StudsOffset = Vector3.new(0, 2.5, 0)
-		billboard.AlwaysOnTop = true
-		billboard.Parent = head
-
-		local label = Instance.new("TextLabel")
-		label.Size = UDim2.new(1, 0, 1, 0)
-		label.BackgroundTransparency = 1
-		label.BorderSizePixel = 0
-		label.Text = "DONO"
-		label.Font = Enum.Font.GothamBlack
-		label.TextSize = 24
-		label.TextStrokeTransparency = 1
-		label.Parent = billboard
-
-		local hue = 0
-		RunService.RenderStepped:Connect(function(dt)
-			if label and label.Parent then
-				hue = (hue + dt * 0.5) % 1
-				label.TextColor3 = Color3.fromHSV(hue, 1, 1)
-			end
-		end)
-	end
-
-	if player.Character then
-		task.spawn(setupCharacter, player.Character)
-	end
-
-	player.CharacterAdded:Connect(function(character)
-		task.spawn(setupCharacter, character)
-	end)
-end
-
-for _, player in ipairs(Players:GetPlayers()) do
-	aplicarTagDono(player)
-end
-
-Players.PlayerAdded:Connect(aplicarTagDono)
 
 -- =========================================================
 --                     INICIALIZAÇÃO
