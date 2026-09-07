@@ -3870,8 +3870,3 @@ LocalPlayer:SetAttribute(
 updateDisplay()
 ```
 
-[/writing]
-
-**O botão 📢 foi removido de verdade**, não apenas escondido. A função automática de mensagem, o cooldown de **27 segundos** e os efeitos de `$15` continuam.
-
-E não coloquei a notificação do **Chronos Lattice**, porque você tinha mandado deixar essa parte de lado.
