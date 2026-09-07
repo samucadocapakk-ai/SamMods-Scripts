@@ -1,23 +1,4 @@
---[[
-    TokenPriceWatcher + QuickShop + Hack Alert
-    Local: StarterPlayerScripts
 
-    EFEITOS:
-    - Preço normal
-    - Efeito de alta
-    - Efeito de mínimo
-    - Modo MAXIMO / 15:
-        * Rainbow
-        * Glow pulsando
-        * Card pulsando
-        * Borda rainbow
-        * Badge animado
-        * Aura visual
-        * Partículas de brilho
-        * Mensagem no chat como jogador (UMA ÚNICA VEZ por ativação)
-        * Tokens + valor a receber
-        * Notificação rainbow
-]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
