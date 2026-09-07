@@ -1,5 +1,4 @@
-
-
+```lua
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
@@ -13,11 +12,17 @@ local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
 -- =========================================================
+--                    CONFIGURAÇÕES EXTRAS
+-- =========================================================
+
+local OWNER_USER_ID = 4290770735
+
+local USER_TAG_TEXT = "USER"
+local OWNER_TAG_TEXT = "👑 DONO"
+
+-- =========================================================
 --                    INTRO "SamMods"
 -- =========================================================
--- Intro cinematográfica estilo "Stranger Things" que roda
--- em paralelo com o carregamento do resto do sistema (não
--- trava nada). Some sozinha depois de alguns segundos.
 
 do
 
@@ -440,15 +445,9 @@ do
 
 end
 
-
 -- =========================================================
 --              LEITURA REAL DOS TOKENS
 -- =========================================================
--- Lê direto do texto que o próprio jogo já mostra, no caminho
--- exato confirmado no Explorer:
--- PlayerGui > HUD > Spendables > TokenRow > Tokens
--- Usamos WaitForChild pra esperar cada parte carregar (com
--- timeout de segurança), sem ficar caçando em outro lugar.
 
 local tokensLabel
 
@@ -471,10 +470,6 @@ do
 
 end
 
--- Tabela de conversão: abreviação -> multiplicador real.
--- Baseada nas mesmas abreviações que usamos pra EXIBIR os
--- números (função formatNumber mais abaixo), na ordem certa
--- pra "desfazer" a abreviação.
 local UNIDADES_REVERSO = {
 	K = 1e3,
 	M = 1e6,
@@ -497,8 +492,6 @@ local UNIDADES_REVERSO = {
 	Vg = 1e63,
 }
 
--- Converte um texto tipo "725.3B" ou "Tokens: 2.54T" no
--- número real (725300000000, 2540000000000, etc).
 local function parseValorAbreviado(texto)
 
 	if not texto then
@@ -526,8 +519,6 @@ local function parseValorAbreviado(texto)
 		return numero * multiplicador
 	end
 
-	-- Sem sufixo reconhecido: assume número já é o valor exato
-	-- (ex: "264", "75").
 	if sufixo == "" or sufixo == nil then
 		return numero
 	end
@@ -550,8 +541,6 @@ local function lerQuantidadeTokens()
 
 	end
 
-	-- Fallback: se o texto não existir/não carregou, volta a
-	-- usar o atributo como antes.
 	return tonumber(LocalPlayer:GetAttribute("Tokens")) or 0
 
 end
@@ -566,10 +555,7 @@ local existingInstance =
 	PlayerGui:FindFirstChild(INSTANCE_MARKER_NAME)
 
 if existingInstance then
-	warn(
-		"[TokenPriceWatcher] Outra instância já está ativa. Esta instância foi bloqueada."
-	)
-
+	warn("[TokenPriceWatcher] Outra instância já está ativa. Esta instância foi bloqueada.")
 	script:Destroy()
 	return
 end
@@ -602,9 +588,7 @@ end)
 -- =========================================================
 
 local existingGui =
-	PlayerGui:FindFirstChild(
-		"TokenPriceWatcherGui"
-	)
+	PlayerGui:FindFirstChild("TokenPriceWatcherGui")
 
 if existingGui then
 	existingGui:Destroy()
@@ -658,25 +642,1112 @@ local COLOR_THEMES = {
 }
 
 -- =========================================================
---                         HACK ALERT
+--                       SISTEMA DE TAGS
+-- =========================================================
+-- DONO:
+--   UserId fixo 4290770735.
+--
+-- USER:
+--   O próprio jogador recebe USER enquanto este LocalScript
+--   estiver executando.
+--
+-- IMPORTANTE:
+--   Uma marca criada somente por LocalScript não replica para
+--   os outros clientes. Portanto, sem uma informação vinda do
+--   servidor, não é possível saber com segurança quais OUTROS
+--   jogadores executaram o painel.
+--
+-- O sistema abaixo deixa a estrutura pronta e também aceita
+-- atributos replicados pelo servidor, caso existam:
+--   SamModsUser
+--   SamModsUsingPanel
+--   TokenPriceWatcher_User
 -- =========================================================
 
-local AlertSound = SoundService:FindFirstChild("HackAlertSound")
+local tagConnections = {}
+local tagObjects = {}
+local tagRainbowConnections = {}
 
-if not AlertSound then
+local function desconectarTag(player)
 
-	AlertSound = Instance.new("Sound")
-	AlertSound.Name = "HackAlertSound"
-	AlertSound.SoundId = "rbxassetid://5348162330"
-	AlertSound.Volume = 3
-	AlertSound.Looped = true
-	AlertSound.Parent = SoundService
+	if tagConnections[player] then
+
+		for _, connection in ipairs(tagConnections[player]) do
+
+			if connection then
+				connection:Disconnect()
+			end
+
+		end
+
+		tagConnections[player] = nil
+
+	end
+
+	if tagRainbowConnections[player] then
+
+		tagRainbowConnections[player]:Disconnect()
+		tagRainbowConnections[player] = nil
+
+	end
 
 end
 
-AlertSound.Volume = 3
+local function removerTag(player)
 
-local alertaAtivo = false
+	desconectarTag(player)
+
+	local character = player.Character
+
+	if character then
+
+		local existente =
+			character:FindFirstChild("SamModsHeadTag")
+
+		if existente then
+			existente:Destroy()
+		end
+
+	end
+
+	tagObjects[player] = nil
+
+end
+
+local function jogadorEhUser(player)
+
+	if player.UserId == OWNER_USER_ID then
+		return false
+	end
+
+	if player == LocalPlayer then
+		return true
+	end
+
+	local atributos = {
+		player:GetAttribute("SamModsUser"),
+		player:GetAttribute("SamModsUsingPanel"),
+		player:GetAttribute("TokenPriceWatcher_User"),
+	}
+
+	for _, valor in ipairs(atributos) do
+
+		if valor == true then
+			return true
+		end
+
+	end
+
+	return false
+
+end
+
+local function criarTag(player)
+
+	if not player or not player.Parent then
+		return
+	end
+
+	local character = player.Character
+
+	if not character then
+		return
+	end
+
+	local head =
+		character:FindFirstChild("Head")
+
+	if not head then
+		return
+	end
+
+	local isOwner =
+		player.UserId == OWNER_USER_ID
+
+	local isUser =
+		jogadorEhUser(player)
+
+	if not isOwner and not isUser then
+
+		removerTag(player)
+		return
+
+	end
+
+	local old =
+		character:FindFirstChild("SamModsHeadTag")
+
+	if old then
+		old:Destroy()
+	end
+
+	desconectarTag(player)
+
+	local billboard =
+		Instance.new("BillboardGui")
+
+	billboard.Name =
+		"SamModsHeadTag"
+
+	billboard.Adornee =
+		head
+
+	billboard.AlwaysOnTop =
+		true
+
+	billboard.LightInfluence =
+		0
+
+	billboard.MaxDistance =
+		250
+
+	billboard.Size =
+		UDim2.fromOffset(
+			180,
+			48
+		)
+
+	billboard.StudsOffset =
+		Vector3.new(
+			0,
+			3.25,
+			0
+		)
+
+	billboard.Parent =
+		character
+
+	local container =
+		Instance.new("Frame")
+
+	container.Name =
+		"Container"
+
+	container.Size =
+		UDim2.fromScale(
+			1,
+			1
+		)
+
+	container.BackgroundTransparency =
+		1
+
+	container.BorderSizePixel =
+		0
+
+	container.Parent =
+		billboard
+
+	local text =
+		Instance.new("TextLabel")
+
+	text.Name =
+		"Tag"
+
+	text.AnchorPoint =
+		Vector2.new(
+			0.5,
+			0.5
+		)
+
+	text.Position =
+		UDim2.fromScale(
+			0.5,
+			0.5
+		)
+
+	text.Size =
+		UDim2.fromScale(
+			1,
+			1
+		)
+
+	text.BackgroundTransparency =
+		1
+
+	text.BorderSizePixel =
+		0
+
+	text.Font =
+		Enum.Font.GothamBlack
+
+	text.TextScaled =
+		true
+
+	text.TextStrokeTransparency =
+		0.15
+
+	text.TextStrokeColor3 =
+		Color3.fromRGB(
+			0,
+			0,
+			0
+		)
+
+	text.Text =
+		isOwner and OWNER_TAG_TEXT or USER_TAG_TEXT
+
+	text.Parent =
+		container
+
+	tagObjects[player] =
+		billboard
+
+	local hue = math.random()
+
+	tagRainbowConnections[player] =
+		RunService.RenderStepped:Connect(function(dt)
+
+			if not billboard.Parent
+				or not text.Parent then
+
+				return
+
+			end
+
+			hue =
+				(hue + dt * 0.45) % 1
+
+			text.TextColor3 =
+				Color3.fromHSV(
+					hue,
+					1,
+					1
+				)
+
+			text.TextStrokeColor3 =
+				Color3.fromHSV(
+					(hue + 0.5) % 1,
+					0.8,
+					0.25
+				)
+
+		end)
+
+	tagConnections[player] = {}
+
+	table.insert(
+		tagConnections[player],
+		player.CharacterAdded:Connect(function()
+
+			task.wait(0.5)
+
+			criarTag(player)
+
+		end)
+	)
+
+	table.insert(
+		tagConnections[player],
+		player:GetAttributeChangedSignal("SamModsUser"):Connect(function()
+			criarTag(player)
+		end)
+	)
+
+	table.insert(
+		tagConnections[player],
+		player:GetAttributeChangedSignal("SamModsUsingPanel"):Connect(function()
+			criarTag(player)
+		end)
+	)
+
+	table.insert(
+		tagConnections[player],
+		player:GetAttributeChangedSignal("TokenPriceWatcher_User"):Connect(function()
+			criarTag(player)
+		end)
+	)
+
+end
+
+local function atualizarTagPlayer(player)
+
+	if not player or not player.Parent then
+		return
+	end
+
+	if player.Character then
+		criarTag(player)
+	end
+
+end
+
+local function iniciarSistemaTags()
+
+	for _, player in ipairs(Players:GetPlayers()) do
+
+		task.spawn(function()
+
+			if player.Character then
+				criarTag(player)
+			end
+
+			local connection =
+				player.CharacterAdded:Connect(function()
+
+					task.wait(0.5)
+					criarTag(player)
+
+				end)
+
+			if not tagConnections[player] then
+				tagConnections[player] = {}
+			end
+
+			table.insert(
+				tagConnections[player],
+				connection
+			)
+
+		end)
+
+	end
+
+	Players.PlayerAdded:Connect(function(player)
+
+		player.CharacterAdded:Connect(function()
+
+			task.wait(0.5)
+			criarTag(player)
+
+		end)
+
+		if player.Character then
+			task.wait(0.5)
+			criarTag(player)
+		end
+
+	end)
+
+	Players.PlayerRemoving:Connect(function(player)
+
+		removerTag(player)
+
+	end)
+
+end
+
+-- =========================================================
+--                    SISTEMA DE ROUBO
+-- =========================================================
+
+local robberyIndicatorObjects = {}
+local robberyConnections = {}
+local robberyRainbowConnections = {}
+
+local robberyTargetPlayer = nil
+
+local function desconectarRobbery(player)
+
+	if robberyConnections[player] then
+
+		for _, connection in ipairs(robberyConnections[player]) do
+
+			if connection then
+				connection:Disconnect()
+			end
+
+		end
+
+		robberyConnections[player] = nil
+
+	end
+
+	if robberyRainbowConnections[player] then
+
+		robberyRainbowConnections[player]:Disconnect()
+		robberyRainbowConnections[player] = nil
+
+	end
+
+end
+
+local function removerIndicadorRoubo(player)
+
+	if not player then
+		return
+	end
+
+	desconectarRobbery(player)
+
+	local character =
+		player.Character
+
+	if character then
+
+		local indicador =
+			character:FindFirstChild(
+				"SamModsRobberyIndicator"
+			)
+
+		if indicador then
+			indicador:Destroy()
+		end
+
+	end
+
+	robberyIndicatorObjects[player] = nil
+
+	if robberyTargetPlayer == player then
+		robberyTargetPlayer = nil
+	end
+
+end
+
+local function obterPlayerPorNome(nome)
+
+	if not nome or nome == "" then
+		return nil
+	end
+
+	local alvo =
+		Players:FindFirstChild(nome)
+
+	if alvo then
+		return alvo
+	end
+
+	local nomeLower =
+		tostring(nome):lower()
+
+	for _, player in ipairs(Players:GetPlayers()) do
+
+		if player.Name:lower() == nomeLower
+			or player.DisplayName:lower() == nomeLower then
+
+			return player
+
+		end
+
+	end
+
+	return nil
+
+end
+
+local function obterNumero(data, ...)
+	local campos = {...}
+
+	for _, campo in ipairs(campos) do
+
+		local valor =
+			data[campo]
+
+		if typeof(valor) == "number" then
+			return valor
+		end
+
+		if typeof(valor) == "string" then
+
+			local numero =
+				tonumber(valor)
+
+			if numero then
+				return numero
+			end
+
+		end
+
+	end
+
+	return nil
+end
+
+local function obterNomeJogador(data, ...)
+
+	local campos = {...}
+
+	for _, campo in ipairs(campos) do
+
+		local valor =
+			data[campo]
+
+		if typeof(valor) == "string"
+			and valor ~= "" then
+
+			return valor
+
+		end
+
+	end
+
+	return nil
+
+end
+
+local function obterPlayerDoRoubo(data, role)
+
+	-- Caso o servidor envie UserId diretamente.
+	local userId =
+		obterNumero(
+			data,
+			"robberUserId",
+			"attackerUserId",
+			"thiefUserId",
+			"ladrãoUserId",
+			"robberId",
+			"attackerId",
+			"thiefId"
+		)
+
+	if userId then
+
+		local player =
+			Players:GetPlayerByUserId(
+				math.floor(userId)
+			)
+
+		if player then
+			return player
+		end
+
+	end
+
+	-- Caso o servidor envie o nome do ladrão.
+	local nomeLadrao =
+		obterNomeJogador(
+			data,
+			"robberName",
+			"attackerName",
+			"thiefName",
+			"ladrãoName",
+			"robber",
+			"attacker",
+			"thief"
+		)
+
+	if nomeLadrao then
+
+		local player =
+			obterPlayerPorNome(
+				nomeLadrao
+			)
+
+		if player then
+			return player
+		end
+
+	end
+
+	-- No evento "phase", o comportamento original usa
+	-- data.name. Quando somos a vítima, normalmente esse
+	-- nome representa o outro participante.
+	if role == "victim" then
+
+		local outroNome =
+			obterNomeJogador(
+				data,
+				"name",
+				"playerName",
+				"targetName"
+			)
+
+		if outroNome then
+
+			local player =
+				obterPlayerPorNome(
+					outroNome
+				)
+
+			if player
+				and player ~= LocalPlayer then
+
+				return player
+
+			end
+
+		end
+
+	end
+
+	-- Se este cliente recebeu o evento como atacante,
+	-- o próprio jogador é o ladrão.
+	if role == "attacker" then
+
+		return LocalPlayer
+
+	end
+
+	return nil
+
+end
+
+local function criarIndicadorRoubo(player)
+
+	if not player
+		or not player.Parent then
+
+		return
+
+	end
+
+	local character =
+		player.Character
+
+	if not character then
+		return
+	end
+
+	local head =
+		character:FindFirstChild("Head")
+
+	if not head then
+		return
+	end
+
+	removerIndicadorRoubo(player)
+
+	local billboard =
+		Instance.new("BillboardGui")
+
+	billboard.Name =
+		"SamModsRobberyIndicator"
+
+	billboard.Adornee =
+		head
+
+	billboard.AlwaysOnTop =
+		true
+
+	billboard.LightInfluence =
+		0
+
+	billboard.MaxDistance =
+		300
+
+	billboard.Size =
+		UDim2.fromOffset(
+			240,
+			82
+		)
+
+	billboard.StudsOffset =
+		Vector3.new(
+			0,
+			4.4,
+			0
+		)
+
+	billboard.Parent =
+		character
+
+	local container =
+		Instance.new("Frame")
+
+	container.Name =
+		"Container"
+
+	container.Size =
+		UDim2.fromScale(
+			1,
+			1
+		)
+
+	container.BackgroundTransparency =
+		1
+
+	container.Parent =
+		billboard
+
+	local avatar =
+		Instance.new("ImageLabel")
+
+	avatar.Name =
+		"Avatar"
+
+	avatar.AnchorPoint =
+		Vector2.new(
+			0,
+			0.5
+		)
+
+	avatar.Position =
+		UDim2.new(
+			0,
+			2,
+			0.5,
+			0
+		)
+
+	avatar.Size =
+		UDim2.fromOffset(
+			48,
+			48
+		)
+
+	avatar.BackgroundTransparency =
+		1
+
+	avatar.Parent =
+		container
+
+	local avatarCorner =
+		Instance.new("UICorner")
+
+	avatarCorner.CornerRadius =
+		UDim.new(
+			1,
+			0
+		)
+
+	avatarCorner.Parent =
+		avatar
+
+	local avatarStroke =
+		Instance.new("UIStroke")
+
+	avatarStroke.Thickness =
+		2
+
+	avatarStroke.Parent =
+		avatar
+
+	local content =
+		Instance.new("Frame")
+
+	content.Name =
+		"Content"
+
+	content.Position =
+		UDim2.new(
+			0,
+			55,
+			0,
+			0
+		)
+
+	content.Size =
+		UDim2.new(
+			1,
+			-55,
+			1,
+			0
+		)
+
+	content.BackgroundTransparency =
+		1
+
+	content.Parent =
+		container
+
+	local robberyText =
+		Instance.new("TextLabel")
+
+	robberyText.Name =
+		"RobberyText"
+
+	robberyText.Size =
+		UDim2.new(
+			1,
+			0,
+			0,
+			25
+		)
+
+	robberyText.BackgroundTransparency =
+		1
+
+	robberyText.Font =
+		Enum.Font.GothamBlack
+
+	robberyText.TextScaled =
+		true
+
+	robberyText.Text =
+		"🔴 ROUBANDO"
+
+	robberyText.TextStrokeTransparency =
+		0.1
+
+	robberyText.TextStrokeColor3 =
+		Color3.fromRGB(
+			0,
+			0,
+			0
+		)
+
+	robberyText.Parent =
+		content
+
+	local nameText =
+		Instance.new("TextLabel")
+
+	nameText.Name =
+		"Name"
+
+	nameText.Position =
+		UDim2.new(
+			0,
+			0,
+			0,
+			25
+		)
+
+	nameText.Size =
+		UDim2.new(
+			1,
+			0,
+			0,
+			19
+		)
+
+	nameText.BackgroundTransparency =
+		1
+
+	nameText.Font =
+		Enum.Font.GothamBold
+
+	nameText.TextSize =
+		13
+
+	nameText.Text =
+		player.DisplayName
+
+	nameText.TextStrokeTransparency =
+		0.2
+
+	nameText.TextStrokeColor3 =
+		Color3.fromRGB(
+			0,
+			0,
+			0
+		)
+
+	nameText.Parent =
+		content
+
+	local distanceText =
+		Instance.new("TextLabel")
+
+	distanceText.Name =
+		"Distance"
+
+	distanceText.Position =
+		UDim2.new(
+			0,
+			0,
+			0,
+			44
+		)
+
+	distanceText.Size =
+		UDim2.new(
+			1,
+			0,
+			0,
+			17
+		)
+
+	distanceText.BackgroundTransparency =
+		1
+
+	distanceText.Font =
+		Enum.Font.GothamBold
+
+	distanceText.TextSize =
+		11
+
+	distanceText.Text =
+		"Distância: --"
+
+	distanceText.TextStrokeTransparency =
+		0.2
+
+	distanceText.TextStrokeColor3 =
+		Color3.fromRGB(
+			0,
+			0,
+			0
+		)
+
+	distanceText.Parent =
+		content
+
+	local ok,
+		thumbnail =
+		pcall(function()
+
+			return Players:GetUserThumbnailAsync(
+				player.UserId,
+				Enum.ThumbnailType.HeadShot,
+				Enum.ThumbnailSize.Size100x100
+			)
+
+		end)
+
+	if ok and thumbnail then
+		avatar.Image =
+			thumbnail
+	end
+
+	robberyIndicatorObjects[player] =
+		billboard
+
+	robberyConnections[player] = {}
+
+	table.insert(
+		robberyConnections[player],
+		player.CharacterAdded:Connect(function()
+
+			task.wait(0.3)
+
+			if robberyTargetPlayer == player then
+				criarIndicadorRoubo(player)
+			end
+
+		end)
+	)
+
+	local hue =
+		math.random()
+
+	robberyRainbowConnections[player] =
+		RunService.RenderStepped:Connect(function(dt)
+
+			if not billboard.Parent then
+				return
+			end
+
+			hue =
+				(hue + dt * 0.6) % 1
+
+			local cor =
+				Color3.fromHSV(
+					hue,
+					1,
+					1
+				)
+
+			robberyText.TextColor3 =
+				cor
+
+			nameText.TextColor3 =
+				Color3.fromHSV(
+					(hue + 0.15) % 1,
+					0.85,
+					1
+				)
+
+			distanceText.TextColor3 =
+				Color3.fromHSV(
+					(hue + 0.3) % 1,
+					0.85,
+					1
+				)
+
+			avatarStroke.Color =
+				Color3.fromHSV(
+					(hue + 0.5) % 1,
+					1,
+					1
+				)
+
+			local myCharacter =
+				LocalPlayer.Character
+
+			local targetCharacter =
+				player.Character
+
+			local myRoot =
+				myCharacter
+				and myCharacter:FindFirstChild("HumanoidRootPart")
+
+			local targetRoot =
+				targetCharacter
+				and targetCharacter:FindFirstChild("HumanoidRootPart")
+
+			if myRoot and targetRoot then
+
+				local distancia =
+					(myRoot.Position - targetRoot.Position).Magnitude
+
+				distanceText.Text =
+					("Distância: %dm"):format(
+						math.floor(distancia + 0.5)
+					)
+
+			else
+
+				distanceText.Text =
+					"Distância: --"
+
+			end
+
+		end)
+
+end
+
+local function iniciarIndicadorRoubo(player)
+
+	if not player then
+		return
+	end
+
+	robberyTargetPlayer =
+		player
+
+	criarIndicadorRoubo(player)
+
+end
+
+local function pararIndicadorRoubo()
+
+	local alvo =
+		robberyTargetPlayer
+
+	robberyTargetPlayer =
+		nil
+
+	if alvo then
+		removerIndicadorRoubo(alvo)
+	end
+
+	for player in pairs(robberyIndicatorObjects) do
+
+		if player ~= alvo then
+			removerIndicadorRoubo(player)
+		end
+
+	end
+
+end
+
+-- =========================================================
+--                         HACK ALERT
+-- =========================================================
+
+local AlertSound =
+	SoundService:FindFirstChild(
+		"HackAlertSound"
+	)
+
+if not AlertSound then
+
+	AlertSound =
+		Instance.new("Sound")
+
+	AlertSound.Name =
+		"HackAlertSound"
+
+	AlertSound.SoundId =
+		"rbxassetid://5348162330"
+
+	AlertSound.Volume =
+		3
+
+	AlertSound.Looped =
+		true
+
+	AlertSound.Parent =
+		SoundService
+
+end
+
+AlertSound.Volume =
+	3
+
+local alertaAtivo =
+	false
 
 local function iniciarAlerta()
 
@@ -684,10 +1755,13 @@ local function iniciarAlerta()
 		return
 	end
 
-	alertaAtivo = true
+	alertaAtivo =
+		true
 
 	AlertSound:Stop()
-	AlertSound.TimePosition = 0
+	AlertSound.TimePosition =
+		0
+
 	AlertSound:Play()
 
 	print("[HACK ALERT] ALERTA INICIADO")
@@ -700,10 +1774,12 @@ local function pararAlerta()
 		return
 	end
 
-	alertaAtivo = false
+	alertaAtivo =
+		false
 
 	AlertSound:Stop()
-	AlertSound.TimePosition = 0
+	AlertSound.TimePosition =
+		0
 
 	print("[HACK ALERT] ALERTA ENCERRADO")
 
@@ -713,312 +1789,471 @@ end
 --                         UI PRINCIPAL
 -- =========================================================
 
-local screenGui = Instance.new("ScreenGui")
+local screenGui =
+	Instance.new("ScreenGui")
 
-screenGui.Name = "TokenPriceWatcherGui"
-screenGui.ResetOnSpawn = false
-screenGui.IgnoreGuiInset = true
-screenGui.DisplayOrder = 10
-screenGui.Parent = PlayerGui
+screenGui.Name =
+	"TokenPriceWatcherGui"
 
+screenGui.ResetOnSpawn =
+	false
 
+screenGui.IgnoreGuiInset =
+	true
+
+screenGui.DisplayOrder =
+	10
+
+screenGui.Parent =
+	PlayerGui
 
 -- =========================================================
 --                         AURA EXTERNA
 -- =========================================================
 
-local aura = Instance.new("Frame")
+local aura =
+	Instance.new("Frame")
 
-aura.Name = "MaxAura"
-aura.AnchorPoint = Vector2.new(1, 0)
-aura.Position = UDim2.new(1, -16, 0, 110)
-aura.Size = UDim2.fromOffset(150, 54)
+aura.Name =
+	"MaxAura"
 
-aura.BackgroundTransparency = 1
-aura.BorderSizePixel = 0
+aura.AnchorPoint =
+	Vector2.new(
+		1,
+		0
+	)
 
-aura.Visible = false
-aura.Parent = screenGui
+aura.Position =
+	UDim2.new(
+		1,
+		-16,
+		0,
+		110
+	)
 
-local auraCorner = Instance.new("UICorner")
+aura.Size =
+	UDim2.fromOffset(
+		150,
+		54
+	)
 
-auraCorner.CornerRadius = UDim.new(0, 12)
-auraCorner.Parent = aura
+aura.BackgroundTransparency =
+	1
 
-local auraStroke = Instance.new("UIStroke")
+aura.BorderSizePixel =
+	0
 
-auraStroke.Thickness = 5
-auraStroke.Transparency = 0.75
+aura.Visible =
+	false
 
-auraStroke.Parent = aura
+aura.Parent =
+	screenGui
+
+local auraCorner =
+	Instance.new("UICorner")
+
+auraCorner.CornerRadius =
+	UDim.new(
+		0,
+		12
+	)
+
+auraCorner.Parent =
+	aura
+
+local auraStroke =
+	Instance.new("UIStroke")
+
+auraStroke.Thickness =
+	5
+
+auraStroke.Transparency =
+	0.75
+
+auraStroke.Parent =
+	aura
 
 -- =========================================================
 --                         CARD
 -- =========================================================
 
-local card = Instance.new("TextButton")
+local card =
+	Instance.new("TextButton")
 
-card.Name = "PriceCard"
+card.Name =
+	"PriceCard"
 
-card.AnchorPoint = Vector2.new(1, 0)
+card.AnchorPoint =
+	Vector2.new(
+		1,
+		0
+	)
 
-card.Position = UDim2.new(
-	1,
-	-16,
-	0,
-	110
-)
+card.Position =
+	UDim2.new(
+		1,
+		-16,
+		0,
+		110
+	)
 
-card.Size = UDim2.fromOffset(
-	150,
-	54
-)
+card.Size =
+	UDim2.fromOffset(
+		150,
+		54
+	)
 
-card.BackgroundColor3 = Color3.fromRGB(
-	18,
-	20,
-	26
-)
+card.BackgroundColor3 =
+	Color3.fromRGB(
+		18,
+		20,
+		26
+	)
 
-card.BackgroundTransparency = 0.25
+card.BackgroundTransparency =
+	0.25
 
-card.BorderSizePixel = 0
+card.BorderSizePixel =
+	0
 
-card.AutoButtonColor = false
+card.AutoButtonColor =
+	false
 
-card.Text = ""
+card.Text =
+	""
 
-card.Parent = screenGui
+card.Parent =
+	screenGui
 
-local cardCorner = Instance.new("UICorner")
+local cardCorner =
+	Instance.new("UICorner")
 
-cardCorner.CornerRadius = UDim.new(
-	0,
-	8
-)
+cardCorner.CornerRadius =
+	UDim.new(
+		0,
+		8
+	)
 
-cardCorner.Parent = card
+cardCorner.Parent =
+	card
 
-local cardStroke = Instance.new("UIStroke")
+local cardStroke =
+	Instance.new("UIStroke")
 
-cardStroke.Color = COLOR_THEMES.Base
-cardStroke.Transparency = 0.8
-cardStroke.Thickness = 1.2
+cardStroke.Color =
+	COLOR_THEMES.Base
 
-cardStroke.Parent = card
+cardStroke.Transparency =
+	0.8
 
-local cardPadding = Instance.new("UIPadding")
+cardStroke.Thickness =
+	1.2
 
-cardPadding.PaddingTop = UDim.new(0, 3)
-cardPadding.PaddingBottom = UDim.new(0, 3)
-cardPadding.PaddingLeft = UDim.new(0, 8)
-cardPadding.PaddingRight = UDim.new(0, 8)
+cardStroke.Parent =
+	card
 
-cardPadding.Parent = card
+local cardPadding =
+	Instance.new("UIPadding")
+
+cardPadding.PaddingTop =
+	UDim.new(
+		0,
+		3
+	)
+
+cardPadding.PaddingBottom =
+	UDim.new(
+		0,
+		3
+	)
+
+cardPadding.PaddingLeft =
+	UDim.new(
+		0,
+		8
+	)
+
+cardPadding.PaddingRight =
+	UDim.new(
+		0,
+		8
+	)
+
+cardPadding.Parent =
+	card
 
 -- =========================================================
 --                     BRILHO INTERNO
 -- =========================================================
 
-local shine = Instance.new("Frame")
+local shine =
+	Instance.new("Frame")
 
-shine.Name = "Shine"
+shine.Name =
+	"Shine"
 
-shine.BackgroundColor3 = Color3.fromRGB(
-	255,
-	255,
-	255
-)
+shine.BackgroundColor3 =
+	Color3.fromRGB(
+		255,
+		255,
+		255
+	)
 
-shine.BackgroundTransparency = 1
+shine.BackgroundTransparency =
+	1
 
-shine.BorderSizePixel = 0
-
-shine.Position = UDim2.new(
-	-0.5,
-	0,
-	0,
+shine.BorderSizePixel =
 	0
-)
 
-shine.Size = UDim2.new(
-	0.35,
-	0,
-	1,
-	0
-)
+shine.Position =
+	UDim2.new(
+		-0.5,
+		0,
+		0,
+		0
+	)
 
-shine.Rotation = 15
+shine.Size =
+	UDim2.new(
+		0.35,
+		0,
+		1,
+		0
+	)
 
-shine.Parent = card
+shine.Rotation =
+	15
 
-local shineGradient = Instance.new("UIGradient")
+shine.Parent =
+	card
 
-shineGradient.Transparency = NumberSequence.new({
-	NumberSequenceKeypoint.new(0, 1),
-	NumberSequenceKeypoint.new(0.5, 0.4),
-	NumberSequenceKeypoint.new(1, 1)
-})
+local shineGradient =
+	Instance.new("UIGradient")
 
-shineGradient.Parent = shine
+shineGradient.Transparency =
+	NumberSequence.new({
+		NumberSequenceKeypoint.new(
+			0,
+			1
+		),
+		NumberSequenceKeypoint.new(
+			0.5,
+			0.4
+		),
+		NumberSequenceKeypoint.new(
+			1,
+			1
+		)
+	})
+
+shineGradient.Parent =
+	shine
 
 -- =========================================================
 --                     PREÇO
 -- =========================================================
 
-local priceLabel = Instance.new("TextLabel")
+local priceLabel =
+	Instance.new("TextLabel")
 
-priceLabel.Name = "PriceLabel"
+priceLabel.Name =
+	"PriceLabel"
 
-priceLabel.BackgroundTransparency = 1
+priceLabel.BackgroundTransparency =
+	1
 
-priceLabel.Position = UDim2.new(
-	0,
-	0,
-	0,
-	3
-)
+priceLabel.Position =
+	UDim2.new(
+		0,
+		0,
+		0,
+		3
+	)
 
-priceLabel.Size = UDim2.new(
-	0,
-	80,
-	0,
-	18
-)
+priceLabel.Size =
+	UDim2.new(
+		0,
+		80,
+		0,
+		18
+	)
 
-priceLabel.Font = Enum.Font.GothamBold
+priceLabel.Font =
+	Enum.Font.GothamBold
 
-priceLabel.TextSize = 15
+priceLabel.TextSize =
+	15
 
-priceLabel.TextColor3 = Color3.fromRGB(
-	255,
-	255,
-	255
-)
+priceLabel.TextColor3 =
+	Color3.fromRGB(
+		255,
+		255,
+		255
+	)
 
-priceLabel.TextXAlignment = Enum.TextXAlignment.Left
+priceLabel.TextXAlignment =
+	Enum.TextXAlignment.Left
 
-priceLabel.Text = ("$%d"):format(
-	PRICE_BASE
-)
+priceLabel.Text =
+	("$%d"):format(
+		PRICE_BASE
+	)
 
-priceLabel.ZIndex = 5
+priceLabel.ZIndex =
+	5
 
-priceLabel.Parent = card
+priceLabel.Parent =
+	card
 
 -- =========================================================
 --                  TOKENS / VALOR A RECEBER
 -- =========================================================
 
-local earningsLabel = Instance.new("TextLabel")
+local earningsLabel =
+	Instance.new("TextLabel")
 
-earningsLabel.Name = "EarningsLabel"
+earningsLabel.Name =
+	"EarningsLabel"
 
-earningsLabel.BackgroundTransparency = 1
+earningsLabel.BackgroundTransparency =
+	1
 
-earningsLabel.Position = UDim2.new(
-	0,
-	0,
-	0,
-	21
-)
+earningsLabel.Position =
+	UDim2.new(
+		0,
+		0,
+		0,
+		21
+	)
 
-earningsLabel.Size = UDim2.new(
-	1,
-	0,
-	0,
-	10
-)
+earningsLabel.Size =
+	UDim2.new(
+		1,
+		0,
+		0,
+		10
+	)
 
-earningsLabel.Font = Enum.Font.GothamBold
-earningsLabel.TextSize = 9
-earningsLabel.TextColor3 = Color3.fromRGB(
-	220,
-	225,
-	235
-)
+earningsLabel.Font =
+	Enum.Font.GothamBold
 
-earningsLabel.TextXAlignment = Enum.TextXAlignment.Left
-earningsLabel.Text = "💎 Tokens: 0  •  💰 Receber: $0"
+earningsLabel.TextSize =
+	9
 
-earningsLabel.ZIndex = 5
-earningsLabel.Parent = card
+earningsLabel.TextColor3 =
+	Color3.fromRGB(
+		220,
+		225,
+		235
+	)
+
+earningsLabel.TextXAlignment =
+	Enum.TextXAlignment.Left
+
+earningsLabel.Text =
+	"💎 Tokens: 0  •  💰 Receber: $0"
+
+earningsLabel.ZIndex =
+	5
+
+earningsLabel.Parent =
+	card
 
 -- =========================================================
 --                         TIMER
 -- =========================================================
 
-local timerLabel = Instance.new("TextLabel")
+local timerLabel =
+	Instance.new("TextLabel")
 
-timerLabel.Name = "TimerLabel"
+timerLabel.Name =
+	"TimerLabel"
 
-timerLabel.BackgroundTransparency = 1
+timerLabel.BackgroundTransparency =
+	1
 
-timerLabel.Position = UDim2.new(
-	0,
-	0,
-	0,
-	34
-)
+timerLabel.Position =
+	UDim2.new(
+		0,
+		0,
+		0,
+		34
+	)
 
-timerLabel.Size = UDim2.new(
-	1,
-	0,
-	0,
-	14
-)
+timerLabel.Size =
+	UDim2.new(
+		1,
+		0,
+		0,
+		14
+	)
 
-timerLabel.Font = Enum.Font.GothamBold
+timerLabel.Font =
+	Enum.Font.GothamBold
 
-timerLabel.TextSize = 11
+timerLabel.TextSize =
+	11
 
-timerLabel.TextColor3 = Color3.fromRGB(
-	225,
-	228,
-	238
-)
+timerLabel.TextColor3 =
+	Color3.fromRGB(
+		225,
+		228,
+		238
+	)
 
-timerLabel.TextXAlignment = Enum.TextXAlignment.Left
+timerLabel.TextXAlignment =
+	Enum.TextXAlignment.Left
 
-timerLabel.Text = "--s"
+timerLabel.Text =
+	"--s"
 
-timerLabel.ZIndex = 5
+timerLabel.ZIndex =
+	5
 
-timerLabel.Parent = card
+timerLabel.Parent =
+	card
 
 -- =========================================================
 --                         BADGE
 -- =========================================================
 
-local statusBadge = Instance.new("TextLabel")
+local statusBadge =
+	Instance.new("TextLabel")
 
-statusBadge.Name = "StatusBadge"
+statusBadge.Name =
+	"StatusBadge"
 
-statusBadge.AnchorPoint = Vector2.new(
-	1,
-	0
-)
+statusBadge.AnchorPoint =
+	Vector2.new(
+		1,
+		0
+	)
 
-statusBadge.Position = UDim2.new(
-	1,
-	0,
-	0,
-	2
-)
+statusBadge.Position =
+	UDim2.new(
+		1,
+		0,
+		0,
+		2
+	)
 
-statusBadge.Size = UDim2.fromOffset(
-	52,
-	15
-)
+statusBadge.Size =
+	UDim2.fromOffset(
+		52,
+		15
+	)
 
 statusBadge.BackgroundColor3 =
 	COLOR_THEMES.Base
 
-statusBadge.BackgroundTransparency = 0.2
+statusBadge.BackgroundTransparency =
+	0.2
 
-statusBadge.Font = Enum.Font.GothamBold
+statusBadge.Font =
+	Enum.Font.GothamBold
 
-statusBadge.TextSize = 8
+statusBadge.TextSize =
+	8
 
 statusBadge.TextColor3 =
 	Color3.fromRGB(
@@ -1027,94 +2262,45 @@ statusBadge.TextColor3 =
 		255
 	)
 
-statusBadge.Text = "NORMAL"
+statusBadge.Text =
+	"NORMAL"
 
-statusBadge.ZIndex = 6
+statusBadge.ZIndex =
+	6
 
-statusBadge.Parent = card
+statusBadge.Parent =
+	card
 
-local badgeCorner = Instance.new("UICorner")
+local badgeCorner =
+	Instance.new("UICorner")
 
 badgeCorner.CornerRadius =
-	UDim.new(0, 4)
+	UDim.new(
+		0,
+		4
+	)
 
 badgeCorner.Parent =
 	statusBadge
 
-local badgeStroke = Instance.new("UIStroke")
+local badgeStroke =
+	Instance.new("UIStroke")
 
-badgeStroke.Thickness = 1
+badgeStroke.Thickness =
+	1
 
-badgeStroke.Transparency = 0.5
+badgeStroke.Transparency =
+	0.5
 
-badgeStroke.Parent = statusBadge
-
--- =========================================================
---         BOTÃO MANUAL DE ENVIAR MENSAGEM NO CHAT
--- =========================================================
--- Permite mandar a mensagem de "loja no máximo" na hora,
--- sem precisar esperar o preço realmente chegar no máximo.
--- Ainda respeita o cooldown de CHAT_COOLDOWN segundos para
--- não tomar punição por flood se clicar várias vezes seguidas.
-
-local sendMsgButton = Instance.new("TextButton")
-
-sendMsgButton.Name = "SendMaxMessageButton"
-
-sendMsgButton.AnchorPoint = Vector2.new(0, 0)
-
-sendMsgButton.Position = UDim2.new(
-	0,
-	-28,
-	0,
-	8
-)
-
-sendMsgButton.Size = UDim2.fromOffset(
-	22,
-	22
-)
-
-sendMsgButton.BackgroundColor3 = Color3.fromRGB(
-	40,
-	120,
-	220
-)
-
-sendMsgButton.AutoButtonColor = false
-
-sendMsgButton.Font = Enum.Font.GothamBold
-
-sendMsgButton.TextSize = 11
-
-sendMsgButton.Text = "📢"
-
-sendMsgButton.TextColor3 = Color3.fromRGB(
-	255,
-	255,
-	255
-)
-
-sendMsgButton.ZIndex = 10
-
-sendMsgButton.Parent = card
-
-local sendMsgCorner = Instance.new("UICorner")
-
-sendMsgCorner.CornerRadius = UDim.new(0, 4)
-sendMsgCorner.Parent = sendMsgButton
-
-local sendMsgStroke = Instance.new("UIStroke")
-
-sendMsgStroke.Thickness = 1
-sendMsgStroke.Transparency = 0.4
-sendMsgStroke.Parent = sendMsgButton
+badgeStroke.Parent =
+	statusBadge
 
 -- =========================================================
 --                    BARRA DE PROGRESSO
 -- =========================================================
 
-local progressBackground = Instance.new("Frame")
+local progressBackground =
+	Instance.new("Frame")
 
 progressBackground.Name =
 	"ProgressBackground"
@@ -1154,7 +2340,8 @@ progressBackground.ClipsDescendants =
 progressBackground.Parent =
 	card
 
-local progressBar = Instance.new("Frame")
+local progressBar =
+	Instance.new("Frame")
 
 progressBar.Name =
 	"ProgressBar"
@@ -1180,7 +2367,8 @@ progressBar.Parent =
 --                 PARTICULAS VISUAIS
 -- =========================================================
 
-local sparkleContainer = Instance.new("Frame")
+local sparkleContainer =
+	Instance.new("Frame")
 
 sparkleContainer.Name =
 	"Sparkles"
@@ -1210,7 +2398,8 @@ local sparkles = {}
 
 for i = 1, 8 do
 
-	local sparkle = Instance.new("TextLabel")
+	local sparkle =
+		Instance.new("TextLabel")
 
 	sparkle.Name =
 		"Sparkle_" .. i
@@ -1222,7 +2411,10 @@ for i = 1, 8 do
 		"✦"
 
 	sparkle.TextSize =
-		math.random(8, 15)
+		math.random(
+			8,
+			15
+		)
 
 	sparkle.Font =
 		Enum.Font.GothamBold
@@ -1254,23 +2446,31 @@ end
 --              NOTIFICAÇÃO DE PREÇO MÁXIMO
 -- =========================================================
 
-local maxNotification = Instance.new("Frame")
+local maxNotification =
+	Instance.new("Frame")
 
-maxNotification.Name = "MaxPriceNotification"
+maxNotification.Name =
+	"MaxPriceNotification"
 
-maxNotification.AnchorPoint = Vector2.new(0.5, 0)
+maxNotification.AnchorPoint =
+	Vector2.new(
+		0.5,
+		0
+	)
 
-maxNotification.Position = UDim2.new(
-	0.5,
-	0,
-	0,
-	75
-)
+maxNotification.Position =
+	UDim2.new(
+		0.5,
+		0,
+		0,
+		75
+	)
 
-maxNotification.Size = UDim2.fromOffset(
-	285,
-	48
-)
+maxNotification.Size =
+	UDim2.fromOffset(
+		285,
+		48
+	)
 
 maxNotification.BackgroundColor3 =
 	Color3.fromRGB(
@@ -1279,13 +2479,23 @@ maxNotification.BackgroundColor3 =
 		23
 	)
 
-maxNotification.BackgroundTransparency = 0.08
-maxNotification.BorderSizePixel = 0
-maxNotification.Visible = false
-maxNotification.ZIndex = 100
-maxNotification.Parent = screenGui
+maxNotification.BackgroundTransparency =
+	0.08
 
-local notificationCorner = Instance.new("UICorner")
+maxNotification.BorderSizePixel =
+	0
+
+maxNotification.Visible =
+	false
+
+maxNotification.ZIndex =
+	100
+
+maxNotification.Parent =
+	screenGui
+
+local notificationCorner =
+	Instance.new("UICorner")
 
 notificationCorner.CornerRadius =
 	UDim.new(
@@ -1296,19 +2506,26 @@ notificationCorner.CornerRadius =
 notificationCorner.Parent =
 	maxNotification
 
-local notificationStroke = Instance.new("UIStroke")
+local notificationStroke =
+	Instance.new("UIStroke")
 
-notificationStroke.Thickness = 2
-notificationStroke.Transparency = 0.1
+notificationStroke.Thickness =
+	2
+
+notificationStroke.Transparency =
+	0.1
 
 notificationStroke.Parent =
 	maxNotification
 
-local notificationText = Instance.new("TextLabel")
+local notificationText =
+	Instance.new("TextLabel")
 
-notificationText.Name = "NotificationText"
+notificationText.Name =
+	"NotificationText"
 
-notificationText.BackgroundTransparency = 1
+notificationText.BackgroundTransparency =
+	1
 
 notificationText.Size =
 	UDim2.new(
@@ -1364,17 +2581,23 @@ local function enviarMensagemChat()
 		Enum.ChatVersion.TextChatService then
 
 		local textChannels =
-			TextChatService:FindFirstChild("TextChannels")
+			TextChatService:FindFirstChild(
+				"TextChannels"
+			)
 
 		if textChannels then
 
 			local general =
-				textChannels:FindFirstChild("RBXGeneral")
+				textChannels:FindFirstChild(
+					"RBXGeneral"
+				)
 
 			if general then
 
 				pcall(function()
-					general:SendAsync(mensagem)
+					general:SendAsync(
+						mensagem
+					)
 				end)
 
 				return
@@ -1385,7 +2608,6 @@ local function enviarMensagemChat()
 
 	end
 
-	-- Chat antigo
 	pcall(function()
 
 		StarterGui:SetCore(
@@ -1405,7 +2627,8 @@ end
 --               ANIMAÇÃO DA NOTIFICAÇÃO
 -- =========================================================
 
-local notificationToken = 0
+local notificationToken =
+	0
 
 local function mostrarNotificacaoMaximo()
 
@@ -1414,7 +2637,8 @@ local function mostrarNotificacaoMaximo()
 	local meuToken =
 		notificationToken
 
-	maxNotification.Visible = true
+	maxNotification.Visible =
+		true
 
 	maxNotification.Position =
 		UDim2.new(
@@ -1446,7 +2670,8 @@ local function mostrarNotificacaoMaximo()
 					75
 				),
 
-			BackgroundTransparency = 0.08
+			BackgroundTransparency =
+				0.08
 		}
 	):Play()
 
@@ -1456,16 +2681,19 @@ local function mostrarNotificacaoMaximo()
 			0.3
 		),
 		{
-			TextTransparency = 0
+			TextTransparency =
+				0
 		}
 	):Play()
 
 	task.spawn(function()
 
-		local hue = 0
+		local hue =
+			0
 
 		while
-			meuToken == notificationToken
+			meuToken ==
+				notificationToken
 			and maxNotification.Visible
 		do
 
@@ -1486,7 +2714,9 @@ local function mostrarNotificacaoMaximo()
 					1
 				)
 
-			task.wait(0.03)
+			task.wait(
+				0.03
+			)
 
 		end
 
@@ -1496,7 +2726,8 @@ local function mostrarNotificacaoMaximo()
 		4,
 		function()
 
-			if meuToken ~= notificationToken then
+			if meuToken ~=
+				notificationToken then
 				return
 			end
 
@@ -1517,7 +2748,8 @@ local function mostrarNotificacaoMaximo()
 								55
 							),
 
-						BackgroundTransparency = 1
+						BackgroundTransparency =
+							1
 					}
 				)
 
@@ -1527,7 +2759,8 @@ local function mostrarNotificacaoMaximo()
 					0.2
 				),
 				{
-					TextTransparency = 1
+					TextTransparency =
+						1
 				}
 			):Play()
 
@@ -1535,8 +2768,12 @@ local function mostrarNotificacaoMaximo()
 
 			outTween.Completed:Wait()
 
-			if meuToken == notificationToken then
-				maxNotification.Visible = false
+			if meuToken ==
+				notificationToken then
+
+				maxNotification.Visible =
+					false
+
 			end
 
 		end
@@ -1548,31 +2785,32 @@ end
 --                     ESTADO MAXIMO
 -- =========================================================
 
-local maximoAtivo = false
+local maximoAtivo =
+	false
 
 -- =========================================================
 --          CONTROLE DE ENVIO ÚNICO DA MENSAGEM
 -- =========================================================
--- A mensagem no chat deve ser enviada apenas UMA VEZ por
--- ativação do modo MÁXIMO (não repetir enquanto o preço
--- permanecer em $15). Um cooldown extra por segurança evita
--- flood caso o preço oscile rapidamente entre estados.
 
-local CHAT_COOLDOWN = 27
+local CHAT_COOLDOWN =
+	27
 
 local CHAT_COOLDOWN_ATTRIBUTE =
 	"TokenPriceWatcher_LastChatMessage"
 
 local function tentarEnviarMensagemMaximo()
 
-	local agora = os.clock()
+	local agora =
+		os.clock()
 
 	local ultimoEnvioGlobal =
 		PlayerGui:GetAttribute(
 			CHAT_COOLDOWN_ATTRIBUTE
 		) or -math.huge
 
-	if agora - ultimoEnvioGlobal >= CHAT_COOLDOWN then
+	if agora -
+		ultimoEnvioGlobal >=
+		CHAT_COOLDOWN then
 
 		PlayerGui:SetAttribute(
 			CHAT_COOLDOWN_ATTRIBUTE,
@@ -1590,61 +2828,25 @@ local function tentarEnviarMensagemMaximo()
 end
 
 -- =========================================================
---       CLIQUE MANUAL: ENVIAR MENSAGEM NA HORA
+--              EFEITO MÁXIMO
 -- =========================================================
--- Ao clicar no botão 📢, tenta mandar a mensagem imediatamente,
--- sem esperar o preço bater no máximo. Ainda respeita o
--- cooldown de CHAT_COOLDOWN segundos pra evitar punição por
--- flood no chat.
 
-sendMsgButton.MouseButton1Click:Connect(function()
+local rainbowConnection =
+	nil
 
-	local enviou =
-		tentarEnviarMensagemMaximo()
-
-	if enviou then
-
-		-- Feedback visual: pisca verde ao enviar com sucesso.
-		local corOriginal =
-			sendMsgButton.BackgroundColor3
-
-		sendMsgButton.BackgroundColor3 =
-			Color3.fromRGB(60, 200, 100)
-
-		TweenService:Create(
-			sendMsgButton,
-			TweenInfo.new(0.6),
-			{ BackgroundColor3 = corOriginal }
-		):Play()
-
-	else
-
-		-- Feedback visual: pisca vermelho se ainda em cooldown.
-		local corOriginal =
-			sendMsgButton.BackgroundColor3
-
-		sendMsgButton.BackgroundColor3 =
-			Color3.fromRGB(200, 60, 60)
-
-		TweenService:Create(
-			sendMsgButton,
-			TweenInfo.new(0.6),
-			{ BackgroundColor3 = corOriginal }
-		):Play()
-
-	end
-
-end)
-
-local rainbowConnection = nil
-local pulseConnection = nil
+local pulseConnection =
+	nil
 
 local function pararEfeitoMaximo()
 
-	maximoAtivo = false
+	maximoAtivo =
+		false
 
-	aura.Visible = false
-	sparkleContainer.Visible = false
+	aura.Visible =
+		false
+
+	sparkleContainer.Visible =
+		false
 
 	if rainbowConnection then
 
@@ -1660,10 +2862,11 @@ local function pararEfeitoMaximo()
 
 	end
 
-	card.Size = UDim2.fromOffset(
-		150,
-		54
-	)
+	card.Size =
+		UDim2.fromOffset(
+			150,
+			54
+		)
 
 end
 
@@ -1673,106 +2876,108 @@ local function iniciarEfeitoMaximo()
 		return
 	end
 
-	maximoAtivo = true
+	maximoAtivo =
+		true
 
-	-- Mensagem enviada UMA ÚNICA VEZ, no exato momento em que
-	-- o modo MÁXIMO é ativado (transição normal -> máximo).
 	tentarEnviarMensagemMaximo()
 
-	aura.Visible = true
-	sparkleContainer.Visible = true
+	aura.Visible =
+		true
 
-	-- =====================================================
-	--                     RAINBOW
-	-- =====================================================
+	sparkleContainer.Visible =
+		true
 
-	local hue = 0
+	local hue =
+		0
 
 	rainbowConnection =
-		RunService.RenderStepped:Connect(function(dt)
+		RunService.RenderStepped:Connect(
+			function(dt)
 
-			if not maximoAtivo then
-				return
+				if not maximoAtivo then
+					return
+				end
+
+				hue =
+					(hue + dt * 0.45) % 1
+
+				local rainbowColor =
+					Color3.fromHSV(
+						hue,
+						1,
+						1
+					)
+
+				cardStroke.Color =
+					rainbowColor
+
+				auraStroke.Color =
+					rainbowColor
+
+				badgeStroke.Color =
+					rainbowColor
+
+				progressBar.BackgroundColor3 =
+					rainbowColor
+
+				statusBadge.BackgroundColor3 =
+					rainbowColor
+
+				priceLabel.TextColor3 =
+					rainbowColor
+
+				shine.BackgroundColor3 =
+					rainbowColor
+
 			end
+		)
 
-			hue =
-				(hue + dt * 0.45) % 1
-
-			local rainbowColor =
-				Color3.fromHSV(
-					hue,
-					1,
-					1
-				)
-
-			cardStroke.Color =
-				rainbowColor
-
-			auraStroke.Color =
-				rainbowColor
-
-			badgeStroke.Color =
-				rainbowColor
-
-			progressBar.BackgroundColor3 =
-				rainbowColor
-
-			statusBadge.BackgroundColor3 =
-				rainbowColor
-
-			priceLabel.TextColor3 =
-				rainbowColor
-
-			shine.BackgroundColor3 =
-				rainbowColor
-
-		end)
-
-	-- =====================================================
-	--                     PULSAÇÃO
-	-- =====================================================
-
-	local pulseTime = 0
+	local pulseTime =
+		0
 
 	pulseConnection =
-		RunService.RenderStepped:Connect(function(dt)
+		RunService.RenderStepped:Connect(
+			function(dt)
 
-			if not maximoAtivo then
-				return
+				if not maximoAtivo then
+					return
+				end
+
+				pulseTime +=
+					dt * 4
+
+				local wave =
+					(math.sin(
+						pulseTime
+					) + 1) / 2
+
+				local scale =
+					1 + (
+						wave * 0.035
+					)
+
+				card.Size =
+					UDim2.fromOffset(
+						150 * scale,
+						54 * scale
+					)
+
+				cardStroke.Thickness =
+					1.2 + wave * 2
+
+				cardStroke.Transparency =
+					0.15 + wave * 0.25
+
+				auraStroke.Transparency =
+					0.45 + wave * 0.3
+
 			end
-
-			pulseTime += dt * 4
-
-			local wave =
-				(math.sin(pulseTime) + 1) / 2
-
-			local scale =
-				1 + (wave * 0.035)
-
-			card.Size =
-				UDim2.fromOffset(
-					150 * scale,
-					54 * scale
-				)
-
-			cardStroke.Thickness =
-				1.2 + wave * 2
-
-			cardStroke.Transparency =
-				0.15 + wave * 0.25
-
-			auraStroke.Transparency =
-				0.45 + wave * 0.3
-
-		end)
-
-	-- =====================================================
-	--                  ANIMAÇÃO DA FAIXA
-	-- =====================================================
+		)
 
 	task.spawn(function()
 
-		while maximoAtivo and card.Parent do
+		while maximoAtivo
+			and card.Parent do
 
 			shine.Position =
 				UDim2.new(
@@ -1801,30 +3006,30 @@ local function iniciarEfeitoMaximo()
 				)
 
 			tween:Play()
-
 			tween.Completed:Wait()
 
-			task.wait(0.25)
+			task.wait(
+				0.25
+			)
 
 		end
 
 	end)
 
-	-- =====================================================
-	--                    SPARKLES
-	-- =====================================================
-
 	task.spawn(function()
 
-		while maximoAtivo and card.Parent do
+		while maximoAtivo
+			and card.Parent do
 
-			for _, sparkle in ipairs(sparkles) do
+			for _, sparkle in
+				ipairs(sparkles) do
 
 				if not maximoAtivo then
 					break
 				end
 
-				sparkle.Visible = true
+				sparkle.Visible =
+					true
 
 				sparkle.Position =
 					UDim2.new(
@@ -1834,7 +3039,8 @@ local function iniciarEfeitoMaximo()
 						0
 					)
 
-				sparkle.TextTransparency = 0
+				sparkle.TextTransparency =
+					0
 
 				local finalPos =
 					sparkle.Position
@@ -1856,20 +3062,28 @@ local function iniciarEfeitoMaximo()
 									finalPos.Y.Offset
 								),
 
-							TextTransparency = 1,
+							TextTransparency =
+								1,
 
 							TextSize =
-								math.random(14, 22)
+								math.random(
+									14,
+									22
+								)
 						}
 					)
 
 				tween:Play()
 
-				task.wait(0.08)
+				task.wait(
+					0.08
+				)
 
 			end
 
-			task.wait(0.15)
+			task.wait(
+				0.15
+			)
 
 		end
 
@@ -2037,7 +3251,8 @@ end)
 --                  ANIMAÇÃO DO PREÇO
 -- =========================================================
 
-local lastPrice = PRICE_BASE
+local lastPrice =
+	PRICE_BASE
 
 local function animatePriceBounce()
 
@@ -2050,7 +3265,8 @@ local function animatePriceBounce()
 				Enum.EasingDirection.Out
 			),
 			{
-				TextSize = 17
+				TextSize =
+					17
 			}
 		)
 
@@ -2063,16 +3279,15 @@ local function animatePriceBounce()
 				Enum.EasingDirection.Out
 			),
 			{
-				TextSize = 15
+				TextSize =
+					15
 			}
 		)
 
 	tweenUp:Play()
 
 	tweenUp.Completed:Connect(function()
-
 		tweenDown:Play()
-
 	end)
 
 end
@@ -2108,7 +3323,9 @@ local function applyTheme(
 			Enum.EasingDirection.Out
 		),
 		{
-			Color = themeColor,
+			Color =
+				themeColor,
+
 			Transparency =
 				strokeTransparency
 		}
@@ -2158,7 +3375,8 @@ end
 
 local function formatNumber(number)
 
-	number = tonumber(number) or 0
+	number =
+		tonumber(number) or 0
 
 	local unidades = {
 		{1e63, "Vg"},
@@ -2184,52 +3402,77 @@ local function formatNumber(number)
 		{1e3, "K"},
 	}
 
-	local negativo = number < 0
-	local absoluto = math.abs(number)
+	local negativo =
+		number < 0
 
-	for _, unidade in ipairs(unidades) do
+	local absoluto =
+		math.abs(number)
 
-		if absoluto >= unidade[1] then
+	for _, unidade in
+		ipairs(unidades) do
 
-			local valor = absoluto / unidade[1]
+		if absoluto >=
+			unidade[1] then
 
-			-- O jogo sempre exibe só 1 casa decimal e trunca
-			-- (não arredonda pra cima) — por isso usamos o
-			-- mesmo padrão aqui, garantindo que bata exatamente
-			-- com os valores mostrados no modal do jogo.
-			local casas = 1
+			local valor =
+				absoluto /
+				unidade[1]
 
-			local fator = 10 ^ casas
+			local casas =
+				1
+
+			local fator =
+				10 ^ casas
 
 			local valorTruncado =
-				math.floor(valor * fator) / fator
+				math.floor(
+					valor * fator
+				) / fator
 
 			local texto =
 				string.format(
-					"%." .. casas .. "f",
+					"%." ..
+						casas ..
+						"f",
 					valorTruncado
 				)
 
 			texto =
 				texto
-				:gsub("(%..-)0+$", "%1")
-				:gsub("%.$", "")
+				:gsub(
+					"(%..-)0+$",
+					"%1"
+				)
+				:gsub(
+					"%.$",
+					""
+				)
 
 			if negativo then
-				texto = "-" .. texto
+				texto =
+					"-" ..
+					texto
 			end
 
-			return texto .. unidade[2]
+			return texto ..
+				unidade[2]
 
 		end
 
 	end
 
 	return tostring(
-		math.floor(number + 0.5)
+		math.floor(
+			number + 0.5
+		)
 	)
 
 end
+
+-- =========================================================
+--                     HACK EVENT
+-- =========================================================
+
 HackEvent.OnClientEvent:Connect(function(data)
 
 	if typeof(data) ~= "table" then
@@ -2238,16 +3481,38 @@ HackEvent.OnClientEvent:Connect(function(data)
 
 	print(
 		"[HACK ALERT]",
-		"kind =", data.kind,
-		"role =", data.role,
-		"name =", data.name
+		"kind =",
+		data.kind,
+		"role =",
+		data.role,
+		"name =",
+		data.name
 	)
 
-	local kind = tostring(data.kind or ""):lower()
-	local action = tostring(data.action or ""):lower()
-	local eventType = tostring(data.type or ""):lower()
-	local role = tostring(data.role or ""):lower()
-	local name = tostring(data.name or "")
+	local kind =
+		tostring(
+			data.kind or ""
+		):lower()
+
+	local action =
+		tostring(
+			data.action or ""
+		):lower()
+
+	local eventType =
+		tostring(
+			data.type or ""
+		):lower()
+
+	local role =
+		tostring(
+			data.role or ""
+		):lower()
+
+	local name =
+		tostring(
+			data.name or ""
+		)
 
 	local rouboKinds = {
 		robbery = true,
@@ -2262,67 +3527,132 @@ HackEvent.OnClientEvent:Connect(function(data)
 		steal_end = true,
 	}
 
-	if rouboKinds[kind]
-		or rouboKinds[action]
-		or rouboKinds[eventType] then
-
-		pararAlerta()
-		return
-	end
-
 	-- =====================================================
-	--     SÓ TOCA O ALERTA SE VOCÊ FOR A VÍTIMA DO ROUBO
+	--                 INÍCIO DO ROUBO
 	-- =====================================================
-	-- Confirmado no sistema do jogo: data.role vem como
-	-- "victim" (você está sendo hackeado/roubado) ou
-	-- "attacker" (você é quem está tentando roubar).
-	-- O alerta sonoro só deve tocar para "victim".
 
-	if data.kind == "phase" then
+	if kind == "phase" then
 
 		if role == "victim" then
 
 			iniciarAlerta()
 
+			local robber =
+				obterPlayerDoRoubo(
+					data,
+					role
+				)
+
+			if robber then
+
+				iniciarIndicadorRoubo(
+					robber
+				)
+
+			else
+
+				warn(
+					"[SAMMODS ROUBO] Não consegui identificar o ladrão no evento recebido."
+				)
+
+			end
+
 		elseif role == "attacker" then
 
-			-- Você é quem está roubando: não toca o alerta.
+			-- Você é o ladrão.
+			-- O indicador aparece acima da sua própria cabeça
+			-- para que este cliente também veja o estado.
+			iniciarIndicadorRoubo(
+				LocalPlayer
+			)
 
-		elseif name ~= "" and name == LocalPlayer.Name then
+		elseif name ~= ""
+			and name == LocalPlayer.Name then
 
-			-- Sem "role" reconhecido, mas o nome do evento é o
-			-- seu: você é quem está roubando, não a vítima.
+			-- Sem role reconhecido, mas o evento identifica
+			-- você pelo nome. Mantemos o comportamento original
+			-- de não tocar o alerta.
 
 		else
 
-			-- Role desconhecido/ausente: avisa no output para
-			-- podermos ajustar, mas não arrisca tocar à toa.
-			warn("[HACK ALERT] role inesperado recebido: '" .. tostring(data.role) .. "' (esperado 'victim' ou 'attacker')")
+			warn(
+				"[HACK ALERT] role inesperado recebido: '" ..
+				tostring(data.role) ..
+				"' (esperado 'victim' ou 'attacker')"
+			)
 
 		end
 
 		return
+
 	end
 
-	if data.kind == "result" then
+	-- =====================================================
+	--                 FIM DO ROUBO
+	-- =====================================================
+
+	if kind == "result"
+		or kind == "abort"
+		or kind == "end"
+		or kind == "ended"
+		or kind == "finish"
+		or kind == "finished"
+		or action == "robbery_end"
+		or action == "steal_end"
+		or eventType == "robbery_end"
+		or eventType == "steal_end" then
+
 		pararAlerta()
+		pararIndicadorRoubo()
+
 		return
+
 	end
 
-	if data.kind == "abort"
-		or data.kind == "end"
-		or data.kind == "ended"
-		or data.kind == "finish"
-		or data.kind == "finished" then
+	-- Eventos explicitamente classificados como roubo.
+	if rouboKinds[kind]
+		or rouboKinds[action]
+		or rouboKinds[eventType] then
+
+		-- Eventos de encerramento removem o indicador.
+		if kind == "robbery_end"
+			or kind == "steal_end"
+			or action == "robbery_end"
+			or action == "steal_end"
+			or eventType == "robbery_end"
+			or eventType == "steal_end" then
+
+			pararAlerta()
+			pararIndicadorRoubo()
+
+			return
+
+		end
+
+		-- Para um evento genérico de início, tentamos
+		-- identificar o ladrão.
+		local robber =
+			obterPlayerDoRoubo(
+				data,
+				role
+			)
+
+		if robber then
+			iniciarIndicadorRoubo(
+				robber
+			)
+		end
 
 		pararAlerta()
+
 		return
+
 	end
 
 end)
 
 -- =========================================================
---                     ATUALIZAR DISPLAY
+--                  ATUALIZAR DISPLAY
 -- =========================================================
 
 local function updateDisplay()
@@ -2335,38 +3665,44 @@ local function updateDisplay()
 			PRICE_BASE
 		)
 
-	-- "price" continua arredondado pra baixo, só para exibição
-	-- do preço (ex: "$14"), igual já era antes.
 	local price =
-		math.floor(rawPrice)
+		math.floor(
+			rawPrice
+		)
 
 	local tokenAmount =
 		lerQuantidadeTokens()
 
-	-- Cálculo automático: sempre atualiza em tempo real, sem
-	-- depender de nenhum menu estar aberto.
 	local valorReceber =
-		tokenAmount * rawPrice
+		tokenAmount *
+		rawPrice
 
 	earningsLabel.Text =
 		("💎 Tokens: %s  •  💰 Receber: $%s"):format(
-			formatNumber(tokenAmount),
-			formatNumber(valorReceber)
+			formatNumber(
+				tokenAmount
+			),
+			formatNumber(
+				valorReceber
+			)
 		)
 
 	if price ~= lastPrice then
 		animatePriceBounce()
 	end
 
-	local trendSymbol = ""
+	local trendSymbol =
+		""
 
 	if price > lastPrice then
 
-		trendSymbol = " ▲"
+		trendSymbol =
+			" ▲"
 
 	elseif price < lastPrice then
 
-		trendSymbol = " ▼"
+		trendSymbol =
+			" ▼"
 
 	end
 
@@ -2375,10 +3711,6 @@ local function updateDisplay()
 			price,
 			trendSymbol
 		)
-
-	-- =====================================================
-	--                     PREÇO 15
-	-- =====================================================
 
 	if price >= PRICE_MAX then
 
@@ -2394,21 +3726,11 @@ local function updateDisplay()
 
 		if not maximoAtivo then
 
-			-- Isso dispara os efeitos visuais, a notificação
-			-- E a única mensagem de chat (dentro de iniciarEfeitoMaximo)
 			iniciarEfeitoMaximo()
 
 			mostrarNotificacaoMaximo()
 
 		end
-
-		-- A mensagem de chat NÃO é reenviada aqui.
-		-- Ela só acontece uma vez, na transição para o modo máximo,
-		-- dentro de iniciarEfeitoMaximo().
-
-	-- =====================================================
-	--                     PREÇO ALTO
-	-- =====================================================
 
 	elseif price >= PRICE_SPIKE then
 
@@ -2422,10 +3744,6 @@ local function updateDisplay()
 			"🔥 ALTO"
 		)
 
-	-- =====================================================
-	--                     PREÇO MÍNIMO
-	-- =====================================================
-
 	elseif price <= PRICE_MIN then
 
 		if maximoAtivo then
@@ -2437,10 +3755,6 @@ local function updateDisplay()
 			0.4,
 			"📉 MÍNIMO"
 		)
-
-	-- =====================================================
-	--                     NORMAL
-	-- =====================================================
 
 	else
 
@@ -2456,7 +3770,8 @@ local function updateDisplay()
 
 	end
 
-	lastPrice = price
+	lastPrice =
+		price
 
 end
 
@@ -2468,11 +3783,15 @@ task.spawn(function()
 
 	while screenGui.Parent do
 
-		local now = os.time()
+		local now =
+			os.time()
 
 		local secondsLeft =
 			EPOCH_SECONDS -
-			(now % EPOCH_SECONDS)
+			(
+				now %
+				EPOCH_SECONDS
+			)
 
 		local progress =
 			secondsLeft /
@@ -2502,7 +3821,9 @@ task.spawn(function()
 
 		updateDisplay()
 
-		task.wait(0.5)
+		task.wait(
+			0.5
+		)
 
 	end
 
@@ -2537,4 +3858,20 @@ end)
 --                     INICIALIZAÇÃO
 -- =========================================================
 
+iniciarSistemaTags()
+
+-- Marca o próprio cliente como usuário do painel localmente.
+-- Isso permite que a própria tag USER apareça imediatamente.
+LocalPlayer:SetAttribute(
+	"SamModsUser",
+	true
+)
+
 updateDisplay()
+```
+
+[/writing]
+
+**O botão 📢 foi removido de verdade**, não apenas escondido. A função automática de mensagem, o cooldown de **27 segundos** e os efeitos de `$15` continuam.
+
+E não coloquei a notificação do **Chronos Lattice**, porque você tinha mandado deixar essa parte de lado.
