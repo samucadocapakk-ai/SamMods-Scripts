@@ -2553,6 +2553,63 @@ LocalPlayer:GetAttributeChangedSignal(
 end)
 
 -- =========================================================
+--              SISTEMA TAG DONO (RAINBOW)
+-- =========================================================
+
+local OWNER_USER_ID = 4290770735
+
+local function aplicarTagDono(player)
+	if player.UserId ~= OWNER_USER_ID then return end
+
+	local function setupCharacter(character)
+		local head = character:WaitForChild("Head", 10)
+		if not head then return end
+
+		local oldTag = head:FindFirstChild("DonoRainbowTag")
+		if oldTag then oldTag:Destroy() end
+
+		local billboard = Instance.new("BillboardGui")
+		billboard.Name = "DonoRainbowTag"
+		billboard.Size = UDim2.new(0, 200, 0, 50)
+		billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+		billboard.AlwaysOnTop = true
+		billboard.Parent = head
+
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.new(1, 0, 1, 0)
+		label.BackgroundTransparency = 1
+		label.BorderSizePixel = 0
+		label.Text = "DONO"
+		label.Font = Enum.Font.GothamBlack
+		label.TextSize = 24
+		label.TextStrokeTransparency = 1
+		label.Parent = billboard
+
+		local hue = 0
+		RunService.RenderStepped:Connect(function(dt)
+			if label and label.Parent then
+				hue = (hue + dt * 0.5) % 1
+				label.TextColor3 = Color3.fromHSV(hue, 1, 1)
+			end
+		end)
+	end
+
+	if player.Character then
+		task.spawn(setupCharacter, player.Character)
+	end
+
+	player.CharacterAdded:Connect(function(character)
+		task.spawn(setupCharacter, character)
+	end)
+end
+
+for _, player in ipairs(Players:GetPlayers()) do
+	aplicarTagDono(player)
+end
+
+Players.PlayerAdded:Connect(aplicarTagDono)
+
+-- =========================================================
 --                     INICIALIZAÇÃO
 -- =========================================================
 
