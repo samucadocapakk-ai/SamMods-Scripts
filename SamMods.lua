@@ -828,9 +828,1634 @@ HackEvent.OnClientEvent:Connect(function(data)
 end)
 
 -- =========================================================
---                     ATUALIZAR DISPLAY (Token price watcher)
+--                  TOKENS / VALOR A RECEBER
 -- =========================================================
 
--- (mantive as funções restantes do TokenPriceWatcher sem alterações funcionais importantes)
+local earningsLabel = Instance.new("TextLabel")
 
-print("[SamMods] Sistema atualizado: tags ajustadas, histórico removido, ESP Anti-Roubo ajustado e integração da loja adicionada.")
+earningsLabel.Name = "EarningsLabel"
+
+earningsLabel.BackgroundTransparency = 1
+
+earningsLabel.Position = UDim2.new(
+	0,
+	0,
+	0,
+	21
+)
+
+earningsLabel.Size = UDim2.new(
+	1,
+	0,
+	0,
+	10
+)
+
+earningsLabel.Font = Enum.Font.GothamBold
+earningsLabel.TextSize = 9
+earningsLabel.TextColor3 = Color3.fromRGB(
+	220,
+	225,
+	235
+)
+
+earningsLabel.TextXAlignment = Enum.TextXAlignment.Left
+earningsLabel.Text = "💎 Tokens: 0  •  💰 Receber: $0"
+
+earningsLabel.ZIndex = 5
+earningsLabel.Parent = card
+
+-- =========================================================
+--                         TIMER
+-- =========================================================
+
+local timerLabel = Instance.new("TextLabel")
+
+timerLabel.Name = "TimerLabel"
+
+timerLabel.BackgroundTransparency = 1
+
+timerLabel.Position = UDim2.new(
+	0,
+	0,
+	0,
+	34
+)
+
+timerLabel.Size = UDim2.new(
+	1,
+	0,
+	0,
+	14
+)
+
+timerLabel.Font = Enum.Font.GothamBold
+
+timerLabel.TextSize = 11
+
+timerLabel.TextColor3 = Color3.fromRGB(
+	225,
+	228,
+	238
+)
+
+timerLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+timerLabel.Text = "--s"
+
+timerLabel.ZIndex = 5
+
+timerLabel.Parent = card
+
+-- =========================================================
+--                         BADGE
+-- =========================================================
+
+local statusBadge = Instance.new("TextLabel")
+
+statusBadge.Name = "StatusBadge"
+
+statusBadge.AnchorPoint = Vector2.new(
+	1,
+	0
+)
+
+statusBadge.Position = UDim2.new(
+	1,
+	0,
+	0,
+	2
+)
+
+statusBadge.Size = UDim2.fromOffset(
+	52,
+	15
+)
+
+statusBadge.BackgroundColor3 =
+	COLOR_THEMES.Base
+
+statusBadge.BackgroundTransparency = 0.2
+
+statusBadge.Font = Enum.Font.GothamBold
+
+statusBadge.TextSize = 8
+
+statusBadge.TextColor3 =
+	Color3.fromRGB(
+		255,
+		255,
+		255
+	)
+
+statusBadge.Text = "NORMAL"
+
+statusBadge.ZIndex = 6
+
+statusBadge.Parent = card
+
+local badgeCorner = Instance.new("UICorner")
+
+badgeCorner.CornerRadius =
+	UDim.new(0, 4)
+
+badgeCorner.Parent =
+	statusBadge
+
+local badgeStroke = Instance.new("UIStroke")
+
+badgeStroke.Thickness = 1
+
+badgeStroke.Transparency = 0.5
+
+badgeStroke.Parent = statusBadge
+
+-- =========================================================
+--         BOTÃO MANUAL DE ENVIAR MENSAGEM NO CHAT
+-- =========================================================
+-- Permite mandar a mensagem de "loja no máximo" na hora,
+-- sem precisar esperar o preço realmente chegar no máximo.
+-- Ainda respeita o cooldown de CHAT_COOLDOWN segundos para
+-- não tomar punição por flood se clicar várias vezes seguidas.
+
+local sendMsgButton = Instance.new("TextButton")
+
+sendMsgButton.Name = "SendMaxMessageButton"
+
+sendMsgButton.AnchorPoint = Vector2.new(0, 0)
+
+sendMsgButton.Position = UDim2.new(
+	0,
+	-28,
+	0,
+	8
+)
+
+sendMsgButton.Size = UDim2.fromOffset(
+	22,
+	22
+)
+
+sendMsgButton.BackgroundColor3 = Color3.fromRGB(
+	40,
+	120,
+	220
+)
+
+sendMsgButton.AutoButtonColor = false
+
+sendMsgButton.Font = Enum.Font.GothamBold
+
+sendMsgButton.TextSize = 11
+
+sendMsgButton.Text = "📢"
+
+sendMsgButton.TextColor3 = Color3.fromRGB(
+	255,
+	255,
+	255
+)
+
+sendMsgButton.ZIndex = 10
+
+sendMsgButton.Parent = card
+
+local sendMsgCorner = Instance.new("UICorner")
+
+sendMsgCorner.CornerRadius = UDim.new(0, 4)
+sendMsgCorner.Parent = sendMsgButton
+
+local sendMsgStroke = Instance.new("UIStroke")
+
+sendMsgStroke.Thickness = 1
+sendMsgStroke.Transparency = 0.4
+sendMsgStroke.Parent = sendMsgButton
+
+-- =========================================================
+--                    BARRA DE PROGRESSO
+-- =========================================================
+
+local progressBackground = Instance.new("Frame")
+
+progressBackground.Name =
+	"ProgressBackground"
+
+progressBackground.Position =
+	UDim2.new(
+		0,
+		0,
+		1,
+		-2
+	)
+
+progressBackground.Size =
+	UDim2.new(
+		1,
+		0,
+		0,
+		2
+	)
+
+progressBackground.BackgroundColor3 =
+	Color3.fromRGB(
+		255,
+		255,
+		255
+	)
+
+progressBackground.BackgroundTransparency =
+	0.9
+
+progressBackground.BorderSizePixel =
+	0
+
+progressBackground.ClipsDescendants =
+	true
+
+progressBackground.Parent =
+	card
+
+local progressBar = Instance.new("Frame")
+
+progressBar.Name =
+	"ProgressBar"
+
+progressBar.Size =
+	UDim2.new(
+		1,
+		0,
+		1,
+		0
+	)
+
+progressBar.BackgroundColor3 =
+	COLOR_THEMES.Base
+
+progressBar.BorderSizePixel =
+	0
+
+progressBar.Parent =
+	progressBackground
+
+-- =========================================================
+--                 PARTICULAS VISUAIS
+-- =========================================================
+
+local sparkleContainer = Instance.new("Frame")
+
+sparkleContainer.Name =
+	"Sparkles"
+
+sparkleContainer.BackgroundTransparency =
+	1
+
+sparkleContainer.Size =
+	UDim2.fromScale(
+		1,
+		1
+	)
+
+sparkleContainer.ClipsDescendants =
+	false
+
+sparkleContainer.Visible =
+	false
+
+sparkleContainer.ZIndex =
+	20
+
+sparkleContainer.Parent =
+	card
+
+local sparkles = {}
+
+for i = 1, 8 do
+
+	local sparkle = Instance.new("TextLabel")
+
+	sparkle.Name =
+		"Sparkle_" .. i
+
+	sparkle.BackgroundTransparency =
+		1
+
+	sparkle.Text =
+		"✦"
+
+	sparkle.TextSize =
+		math.random(8, 15)
+
+	sparkle.Font =
+		Enum.Font.GothamBold
+
+	sparkle.TextColor3 =
+		Color3.fromRGB(
+			255,
+			255,
+			255
+		)
+
+	sparkle.Visible =
+		false
+
+	sparkle.ZIndex =
+		21
+
+	sparkle.Parent =
+		sparkleContainer
+
+	table.insert(
+		sparkles,
+		sparkle
+	)
+
+end
+
+-- =========================================================
+--              NOTIFICAÇÃO DE PREÇO MÁXIMO
+-- =========================================================
+
+local maxNotification = Instance.new("Frame")
+
+maxNotification.Name = "MaxPriceNotification"
+
+maxNotification.AnchorPoint = Vector2.new(0.5, 0)
+
+maxNotification.Position = UDim2.new(
+	0.5,
+	0,
+	0,
+	75
+)
+
+maxNotification.Size = UDim2.fromOffset(
+	285,
+	48
+)
+
+maxNotification.BackgroundColor3 =
+	Color3.fromRGB(
+		15,
+		17,
+		23
+	)
+
+maxNotification.BackgroundTransparency = 0.08
+maxNotification.BorderSizePixel = 0
+maxNotification.Visible = false
+maxNotification.ZIndex = 100
+maxNotification.Parent = screenGui
+
+local notificationCorner = Instance.new("UICorner")
+
+notificationCorner.CornerRadius =
+	UDim.new(
+		0,
+		12
+	)
+
+notificationCorner.Parent =
+	maxNotification
+
+local notificationStroke = Instance.new("UIStroke")
+
+notificationStroke.Thickness = 2
+notificationStroke.Transparency = 0.1
+
+notificationStroke.Parent =
+	maxNotification
+
+local notificationText = Instance.new("TextLabel")
+
+notificationText.Name = "NotificationText"
+
+notificationText.BackgroundTransparency = 1
+
+notificationText.Size =
+	UDim2.new(
+		1,
+		-16,
+		1,
+		0
+	)
+
+notificationText.Position =
+	UDim2.new(
+		0,
+		8,
+		0,
+		0
+	)
+
+notificationText.Font =
+	Enum.Font.GothamBlack
+
+notificationText.TextSize =
+	13
+
+notificationText.TextWrapped =
+	true
+
+notificationText.Text =
+	"🌈  LOJA NO MÁXIMO!  •  $15  💎"
+
+notificationText.TextColor3 =
+	Color3.fromRGB(
+		255,
+		255,
+		255
+	)
+
+notificationText.ZIndex =
+	101
+
+notificationText.Parent =
+	maxNotification
+
+-- =========================================================
+--               FUNÇÃO DE MENSAGEM NO CHAT
+-- =========================================================
+
+local function enviarMensagemChat()
+
+	local mensagem =
+		"🌈 Loja: preço dos tokens está no máximo"
+
+	if TextChatService.ChatVersion ==
+		Enum.ChatVersion.TextChatService then
+
+		local textChannels =
+			TextChatService:FindFirstChild("TextChannels")
+
+		if textChannels then
+
+			local general =
+				textChannels:FindFirstChild("RBXGeneral")
+
+			if general then
+
+				pcall(function()
+					general:SendAsync(mensagem)
+				end)
+
+				return
+
+			end
+
+		end
+
+	end
+
+	-- Chat antigo
+	pcall(function()
+
+		StarterGui:SetCore(
+			"ChatMakeSystemMessage",
+			{
+				Text = mensagem,
+				Font = Enum.Font.GothamBold,
+				TextSize = 18
+			}
+		)
+
+	end)
+
+end
+
+-- =========================================================
+--               ANIMAÇÃO DA NOTIFICAÇÃO
+-- =========================================================
+
+local notificationToken = 0
+
+local function mostrarNotificacaoMaximo()
+
+	notificationToken += 1
+
+	local meuToken =
+		notificationToken
+
+	maxNotification.Visible = true
+
+	maxNotification.Position =
+		UDim2.new(
+			0.5,
+			0,
+			0,
+			55
+		)
+
+	maxNotification.BackgroundTransparency =
+		1
+
+	notificationText.TextTransparency =
+		1
+
+	TweenService:Create(
+		maxNotification,
+		TweenInfo.new(
+			0.35,
+			Enum.EasingStyle.Back,
+			Enum.EasingDirection.Out
+		),
+		{
+			Position =
+				UDim2.new(
+					0.5,
+					0,
+					0,
+					75
+				),
+
+			BackgroundTransparency = 0.08
+		}
+	):Play()
+
+	TweenService:Create(
+		notificationText,
+		TweenInfo.new(
+			0.3
+		),
+		{
+			TextTransparency = 0
+		}
+	):Play()
+
+	task.spawn(function()
+
+		local hue = 0
+
+		while
+			meuToken == notificationToken
+			and maxNotification.Visible
+		do
+
+			hue =
+				(hue + 0.01) % 1
+
+			notificationStroke.Color =
+				Color3.fromHSV(
+					hue,
+					1,
+					1
+				)
+
+			notificationText.TextColor3 =
+				Color3.fromHSV(
+					(hue + 0.12) % 1,
+					0.8,
+					1
+				)
+
+			task.wait(0.03)
+
+		end
+
+	end)
+
+	task.delay(
+		4,
+		function()
+
+			if meuToken ~= notificationToken then
+				return
+			end
+
+			local outTween =
+				TweenService:Create(
+					maxNotification,
+					TweenInfo.new(
+						0.3,
+						Enum.EasingStyle.Quad,
+						Enum.EasingDirection.In
+					),
+					{
+						Position =
+							UDim2.new(
+								0.5,
+								0,
+								0,
+								55
+							),
+
+						BackgroundTransparency = 1
+					}
+				)
+
+			TweenService:Create(
+				notificationText,
+				TweenInfo.new(
+					0.2
+				),
+				{
+					TextTransparency = 1
+				}
+			):Play()
+
+			outTween:Play()
+
+			outTween.Completed:Wait()
+
+			if meuToken == notificationToken then
+				maxNotification.Visible = false
+			end
+
+		end
+	)
+
+end
+
+-- =========================================================
+--                     ESTADO MAXIMO
+-- =========================================================
+
+local maximoAtivo = false
+
+-- =========================================================
+--          CONTROLE DE ENVIO ÚNICO DA MENSAGEM
+-- =========================================================
+-- A mensagem no chat deve ser enviada apenas UMA VEZ por
+-- ativação do modo MÁXIMO (não repetir enquanto o preço
+-- permanecer em $15). Um cooldown extra por segurança evita
+-- flood caso o preço oscile rapidamente entre estados.
+
+local CHAT_COOLDOWN = 27
+
+local CHAT_COOLDOWN_ATTRIBUTE =
+	"TokenPriceWatcher_LastChatMessage"
+
+local function tentarEnviarMensagemMaximo()
+
+	local agora = os.clock()
+
+	local ultimoEnvioGlobal =
+		PlayerGui:GetAttribute(
+			CHAT_COOLDOWN_ATTRIBUTE
+		) or -math.huge
+
+	if agora - ultimoEnvioGlobal >= CHAT_COOLDOWN then
+
+		PlayerGui:SetAttribute(
+			CHAT_COOLDOWN_ATTRIBUTE,
+			agora
+		)
+
+		enviarMensagemChat()
+
+		return true
+
+	end
+
+	return false
+
+end
+
+-- =========================================================
+--       CLIQUE MANUAL: ENVIAR MENSAGEM NA HORA
+-- =========================================================
+-- Ao clicar no botão 📢, tenta mandar a mensagem imediatamente,
+-- sem esperar o preço bater no máximo. Ainda respeita o
+-- cooldown de CHAT_COOLDOWN segundos pra evitar punição por
+-- flood no chat.
+
+sendMsgButton.MouseButton1Click:Connect(function()
+
+	local enviou =
+		tentarEnviarMensagemMaximo()
+
+	if enviou then
+
+		-- Feedback visual: pisca verde ao enviar com sucesso.
+		local corOriginal =
+			sendMsgButton.BackgroundColor3
+
+		sendMsgButton.BackgroundColor3 =
+			Color3.fromRGB(60, 200, 100)
+
+		TweenService:Create(
+			sendMsgButton,
+			TweenInfo.new(0.6),
+			{ BackgroundColor3 = corOriginal }
+		):Play()
+
+	else
+
+		-- Feedback visual: pisca vermelho se ainda em cooldown.
+		local corOriginal =
+			sendMsgButton.BackgroundColor3
+
+		sendMsgButton.BackgroundColor3 =
+			Color3.fromRGB(200, 60, 60)
+
+		TweenService:Create(
+			sendMsgButton,
+			TweenInfo.new(0.6),
+			{ BackgroundColor3 = corOriginal }
+		):Play()
+
+	end
+
+end)
+
+local rainbowConnection = nil
+local pulseConnection = nil
+
+local function pararEfeitoMaximo()
+
+	maximoAtivo = false
+
+	aura.Visible = false
+	sparkleContainer.Visible = false
+
+	if rainbowConnection then
+
+		rainbowConnection:Disconnect()
+		rainbowConnection = nil
+
+	end
+
+	if pulseConnection then
+
+		pulseConnection:Disconnect()
+		pulseConnection = nil
+
+	end
+
+	card.Size = UDim2.fromOffset(
+		150,
+		54
+	)
+
+end
+
+local function iniciarEfeitoMaximo()
+
+	if maximoAtivo then
+		return
+	end
+
+	maximoAtivo = true
+
+	-- Mensagem enviada UMA ÚNICA VEZ, no exato momento em que
+	-- o modo MÁXIMO é ativado (transição normal -> máximo).
+	tentarEnviarMensagemMaximo()
+
+	aura.Visible = true
+	sparkleContainer.Visible = true
+
+	-- =====================================================
+	--                     RAINBOW
+	-- =====================================================
+
+	local hue = 0
+
+	rainbowConnection =
+		RunService.RenderStepped:Connect(function(dt)
+
+			if not maximoAtivo then
+				return
+			end
+
+			hue =
+				(hue + dt * 0.45) % 1
+
+			local rainbowColor =
+				Color3.fromHSV(
+					hue,
+					1,
+					1
+				)
+
+			cardStroke.Color =
+				rainbowColor
+
+			auraStroke.Color =
+				rainbowColor
+
+			badgeStroke.Color =
+				rainbowColor
+
+			progressBar.BackgroundColor3 =
+				rainbowColor
+
+			statusBadge.BackgroundColor3 =
+				rainbowColor
+
+			priceLabel.TextColor3 =
+				rainbowColor
+
+			shine.BackgroundColor3 =
+				rainbowColor
+
+		end)
+
+	-- =====================================================
+	--                     PULSAÇÃO
+	-- =====================================================
+
+	local pulseTime = 0
+
+	pulseConnection =
+		RunService.RenderStepped:Connect(function(dt)
+
+			if not maximoAtivo then
+				return
+			end
+
+			pulseTime += dt * 4
+
+			local wave =
+				(math.sin(pulseTime) + 1) / 2
+
+			local scale =
+				1 + (wave * 0.035)
+
+			card.Size =
+				UDim2.fromOffset(
+					150 * scale,
+					54 * scale
+				)
+
+			cardStroke.Thickness =
+				1.2 + wave * 2
+
+			cardStroke.Transparency =
+				0.15 + wave * 0.25
+
+			auraStroke.Transparency =
+				0.45 + wave * 0.3
+
+		end)
+
+	-- =====================================================
+	--                  ANIMAÇÃO DA FAIXA
+	-- =====================================================
+
+	task.spawn(function()
+
+		while maximoAtivo and card.Parent do
+
+			shine.Position =
+				UDim2.new(
+					-0.5,
+					0,
+					0,
+					0
+				)
+
+			local tween =
+				TweenService:Create(
+					shine,
+					TweenInfo.new(
+						1.1,
+						Enum.EasingStyle.Linear
+					),
+					{
+						Position =
+							UDim2.new(
+								1.2,
+								0,
+								0,
+								0
+							)
+					}
+				)
+
+			tween:Play()
+
+			tween.Completed:Wait()
+
+			task.wait(0.25)
+
+		end
+
+	end)
+
+	-- =====================================================
+	--                    SPARKLES
+	-- =====================================================
+
+	task.spawn(function()
+
+		while maximoAtivo and card.Parent do
+
+			for _, sparkle in ipairs(sparkles) do
+
+				if not maximoAtivo then
+					break
+				end
+
+				sparkle.Visible = true
+
+				sparkle.Position =
+					UDim2.new(
+						math.random(),
+						0,
+						math.random(),
+						0
+					)
+
+				sparkle.TextTransparency = 0
+
+				local finalPos =
+					sparkle.Position
+
+				local tween =
+					TweenService:Create(
+						sparkle,
+						TweenInfo.new(
+							0.6,
+							Enum.EasingStyle.Quad,
+							Enum.EasingDirection.Out
+						),
+						{
+							Position =
+								UDim2.new(
+									finalPos.X.Scale,
+									finalPos.X.Offset,
+									finalPos.Y.Scale - 0.25,
+									finalPos.Y.Offset
+								),
+
+							TextTransparency = 1,
+
+							TextSize =
+								math.random(14, 22)
+						}
+					)
+
+				tween:Play()
+
+				task.wait(0.08)
+
+			end
+
+			task.wait(0.15)
+
+		end
+
+	end)
+
+end
+
+-- =========================================================
+--                    INTERAÇÃO DE CLIQUE
+-- =========================================================
+
+card.MouseButton1Down:Connect(function()
+
+	TweenService:Create(
+		card,
+		TweenInfo.new(
+			0.08
+		),
+		{
+			Size =
+				UDim2.fromOffset(
+					145,
+					52
+				)
+		}
+	):Play()
+
+end)
+
+card.MouseButton1Up:Connect(function()
+
+	if maximoAtivo then
+
+		TweenService:Create(
+			card,
+			TweenInfo.new(
+				0.08
+			),
+			{
+				Size =
+					UDim2.fromOffset(
+						153,
+						55
+					)
+			}
+		):Play()
+
+	else
+
+		TweenService:Create(
+			card,
+			TweenInfo.new(
+				0.08
+			),
+			{
+				Size =
+					UDim2.fromOffset(
+						150,
+						54
+					)
+			}
+		):Play()
+
+	end
+
+	if OpenTokenExchange then
+
+		if OpenTokenExchange:IsA(
+			"RemoteEvent"
+		) then
+
+			OpenTokenExchange:FireServer()
+
+		elseif OpenTokenExchange:IsA(
+			"BindableEvent"
+		) then
+
+			OpenTokenExchange:Fire()
+
+		end
+
+	end
+
+end)
+
+-- =========================================================
+--                         HOVER
+-- =========================================================
+
+card.MouseEnter:Connect(function()
+
+	TweenService:Create(
+		card,
+		TweenInfo.new(
+			0.2
+		),
+		{
+			BackgroundTransparency =
+				0.12
+		}
+	):Play()
+
+	if not maximoAtivo then
+
+		TweenService:Create(
+			cardStroke,
+			TweenInfo.new(
+				0.2
+			),
+			{
+				Transparency =
+					0.35
+			}
+		):Play()
+
+	end
+
+end)
+
+card.MouseLeave:Connect(function()
+
+	TweenService:Create(
+		card,
+		TweenInfo.new(
+			0.2
+		),
+		{
+			BackgroundTransparency =
+				0.25
+		}
+	):Play()
+
+	if not maximoAtivo then
+
+		TweenService:Create(
+			cardStroke,
+			TweenInfo.new(
+				0.2
+			),
+			{
+				Transparency =
+					0.8
+			}
+		):Play()
+
+		TweenService:Create(
+			card,
+			TweenInfo.new(
+				0.08
+			),
+			{
+				Size =
+					UDim2.fromOffset(
+						150,
+						54
+					)
+			}
+		):Play()
+
+	end
+
+end)
+
+-- =========================================================
+--                  ANIMAÇÃO DO PREÇO
+-- =========================================================
+
+local lastPrice = PRICE_BASE
+
+local function animatePriceBounce()
+
+	local tweenUp =
+		TweenService:Create(
+			priceLabel,
+			TweenInfo.new(
+				0.1,
+				Enum.EasingStyle.Quad,
+				Enum.EasingDirection.Out
+			),
+			{
+				TextSize = 17
+			}
+		)
+
+	local tweenDown =
+		TweenService:Create(
+			priceLabel,
+			TweenInfo.new(
+				0.15,
+				Enum.EasingStyle.Back,
+				Enum.EasingDirection.Out
+			),
+			{
+				TextSize = 15
+			}
+		)
+
+	tweenUp:Play()
+
+	tweenUp.Completed:Connect(function()
+
+		tweenDown:Play()
+
+	end)
+
+end
+
+-- =========================================================
+--                      TEMA NORMAL
+-- =========================================================
+
+local function applyTheme(
+	themeColor,
+	strokeTransparency,
+	badgeText
+)
+
+	TweenService:Create(
+		progressBar,
+		TweenInfo.new(
+			0.3,
+			Enum.EasingStyle.Quad,
+			Enum.EasingDirection.Out
+		),
+		{
+			BackgroundColor3 =
+				themeColor
+		}
+	):Play()
+
+	TweenService:Create(
+		cardStroke,
+		TweenInfo.new(
+			0.3,
+			Enum.EasingStyle.Quad,
+			Enum.EasingDirection.Out
+		),
+		{
+			Color = themeColor,
+			Transparency =
+				strokeTransparency
+		}
+	):Play()
+
+	TweenService:Create(
+		statusBadge,
+		TweenInfo.new(
+			0.3,
+			Enum.EasingStyle.Quad,
+			Enum.EasingDirection.Out
+		),
+		{
+			BackgroundColor3 =
+				themeColor
+		}
+	):Play()
+
+	TweenService:Create(
+		priceLabel,
+		TweenInfo.new(
+			0.3,
+			Enum.EasingStyle.Quad,
+			Enum.EasingDirection.Out
+		),
+		{
+			TextColor3 =
+				themeColor
+		}
+	):Play()
+
+	statusBadge.Text =
+		badgeText
+
+	statusBadge.TextColor3 =
+		Color3.fromRGB(
+			255,
+			255,
+			255
+		)
+
+end
+
+-- =========================================================
+--                    FORMATAR NÚMEROS
+-- =========================================================
+
+local function formatNumber(number)
+
+	number = tonumber(number) or 0
+
+	local unidades = {
+		{1e63, "Vg"},
+		{1e60, "No"},
+		{1e57, "Oc"},
+		{1e54, "Spd"},
+		{1e51, "Sxd"},
+		{1e48, "Qid"},
+		{1e45, "Qad"},
+		{1e42, "Td"},
+		{1e39, "Dd"},
+		{1e36, "Ud"},
+		{1e33, "Dc"},
+		{1e30, "No"},
+		{1e27, "Oc"},
+		{1e24, "Sp"},
+		{1e21, "Sx"},
+		{1e18, "Qi"},
+		{1e15, "Qa"},
+		{1e12, "T"},
+		{1e9, "B"},
+		{1e6, "M"},
+		{1e3, "K"},
+	}
+
+	local negativo = number < 0
+	local absoluto = math.abs(number)
+
+	for _, unidade in ipairs(unidades) do
+
+		if absoluto >= unidade[1] then
+
+			local valor = absoluto / unidade[1]
+
+			-- O jogo sempre exibe só 1 casa decimal e trunca
+			-- (não arredonda pra cima) — por isso usamos o
+			-- mesmo padrão aqui, garantindo que bata exatamente
+			-- com os valores mostrados no modal do jogo.
+			local casas = 1
+
+			local fator = 10 ^ casas
+
+			local valorTruncado =
+				math.floor(valor * fator) / fator
+
+			local texto =
+				string.format(
+					"%." .. casas .. "f",
+					valorTruncado
+				)
+
+			texto =
+				texto
+				:gsub("(%..-)0+$", "%1")
+				:gsub("%.$", "")
+
+			if negativo then
+				texto = "-" .. texto
+			end
+
+			return texto .. unidade[2]
+
+		end
+
+	end
+
+	return tostring(
+		math.floor(number + 0.5)
+	)
+
+end
+HackEvent.OnClientEvent:Connect(function(data)
+
+	if typeof(data) ~= "table" then
+		return
+	end
+
+	print(
+		"[HACK ALERT]",
+		"kind =", data.kind,
+		"role =", data.role,
+		"name =", data.name
+	)
+
+	local kind = tostring(data.kind or ""):lower()
+	local action = tostring(data.action or ""):lower()
+	local eventType = tostring(data.type or ""):lower()
+	local role = tostring(data.role or ""):lower()
+	local name = tostring(data.name or "")
+
+	local rouboKinds = {
+		robbery = true,
+		roubo = true,
+		steal = true,
+		stealing = true,
+		stolen = true,
+		theft = true,
+		robbery_start = true,
+		robbery_end = true,
+		steal_start = true,
+		steal_end = true,
+	}
+
+	if rouboKinds[kind]
+		or rouboKinds[action]
+		or rouboKinds[eventType] then
+
+		pararAlerta()
+		return
+	end
+
+	-- =====================================================
+	--     SÓ TOCA O ALERTA SE VOCÊ FOR A VÍTIMA DO ROUBO
+	-- =====================================================
+	-- Confirmado no sistema do jogo: data.role vem como
+	-- "victim" (você está sendo hackeado/roubado) ou
+	-- "attacker" (você é quem está tentando roubar).
+	-- O alerta sonoro só deve tocar para "victim".
+
+	if data.kind == "phase" then
+
+		if role == "victim" then
+
+			iniciarAlerta()
+
+		elseif role == "attacker" then
+
+			-- Você é quem está roubando: não toca o alerta.
+
+		elseif name ~= "" and name == LocalPlayer.Name then
+
+			-- Sem "role" reconhecido, mas o nome do evento é o
+			-- seu: você é quem está roubando, não a vítima.
+
+		else
+
+			-- Role desconhecido/ausente: avisa no output para
+			-- podermos ajustar, mas não arrisca tocar à toa.
+			warn("[HACK ALERT] role inesperado recebido: '" .. tostring(data.role) .. "' (esperado 'victim' ou 'attacker')")
+
+		end
+
+		return
+	end
+
+	if data.kind == "result" then
+		pararAlerta()
+		return
+	end
+
+	if data.kind == "abort"
+		or data.kind == "end"
+		or data.kind == "ended"
+		or data.kind == "finish"
+		or data.kind == "finished" then
+
+		pararAlerta()
+		return
+	end
+
+end)
+
+-- =========================================================
+--                     ATUALIZAR DISPLAY
+-- =========================================================
+
+local function updateDisplay()
+
+	local rawPrice =
+		readNumber(
+			Workspace:GetAttribute(
+				"TokenPrice"
+			),
+			PRICE_BASE
+		)
+
+	-- "price" continua arredondado pra baixo, só para exibição
+	-- do preço (ex: "$14"), igual já era antes.
+	local price =
+		math.floor(rawPrice)
+
+	local tokenAmount =
+		lerQuantidadeTokens()
+
+	-- Cálculo automático: sempre atualiza em tempo real, sem
+	-- depender de nenhum menu estar aberto.
+	local valorReceber =
+		tokenAmount * rawPrice
+
+	earningsLabel.Text =
+		("💎 Tokens: %s  •  💰 Receber: $%s"):format(
+			formatNumber(tokenAmount),
+			formatNumber(valorReceber)
+		)
+
+	if price ~= lastPrice then
+		animatePriceBounce()
+	end
+
+	local trendSymbol = ""
+
+	if price > lastPrice then
+
+		trendSymbol = " ▲"
+
+	elseif price < lastPrice then
+
+		trendSymbol = " ▼"
+
+	end
+
+	priceLabel.Text =
+		("$%d%s"):format(
+			price,
+			trendSymbol
+		)
+
+	-- =====================================================
+	--                     PREÇO 15
+	-- =====================================================
+
+	if price >= PRICE_MAX then
+
+		statusBadge.Text =
+			"⚡ MÁXIMO"
+
+		statusBadge.TextColor3 =
+			Color3.fromRGB(
+				255,
+				255,
+				255
+			)
+
+		if not maximoAtivo then
+
+			-- Isso dispara os efeitos visuais, a notificação
+			-- E a única mensagem de chat (dentro de iniciarEfeitoMaximo)
+			iniciarEfeitoMaximo()
+
+			mostrarNotificacaoMaximo()
+
+		end
+
+		-- A mensagem de chat NÃO é reenviada aqui.
+		-- Ela só acontece uma vez, na transição para o modo máximo,
+		-- dentro de iniciarEfeitoMaximo().
+
+	-- =====================================================
+	--                     PREÇO ALTO
+	-- =====================================================
+
+	elseif price >= PRICE_SPIKE then
+
+		if maximoAtivo then
+			pararEfeitoMaximo()
+		end
+
+		applyTheme(
+			COLOR_THEMES.Spike,
+			0.4,
+			"🔥 ALTO"
+		)
+
+	-- =====================================================
+	--                     PREÇO MÍNIMO
+	-- =====================================================
+
+	elseif price <= PRICE_MIN then
+
+		if maximoAtivo then
+			pararEfeitoMaximo()
+		end
+
+		applyTheme(
+			COLOR_THEMES.Min,
+			0.4,
+			"📉 MÍNIMO"
+		)
+
+	-- =====================================================
+	--                     NORMAL
+	-- =====================================================
+
+	else
+
+		if maximoAtivo then
+			pararEfeitoMaximo()
+		end
+
+		applyTheme(
+			COLOR_THEMES.Base,
+			0.8,
+			"NORMAL"
+		)
+
+	end
+
+	lastPrice = price
+
+end
+
+-- =========================================================
+--                         TIMER
+-- =========================================================
+
+task.spawn(function()
+
+	while screenGui.Parent do
+
+		local now = os.time()
+
+		local secondsLeft =
+			EPOCH_SECONDS -
+			(now % EPOCH_SECONDS)
+
+		local progress =
+			secondsLeft /
+			EPOCH_SECONDS
+
+		timerLabel.Text =
+			("Troca em %ds"):format(
+				secondsLeft
+			)
+
+		TweenService:Create(
+			progressBar,
+			TweenInfo.new(
+				0.5,
+				Enum.EasingStyle.Linear
+			),
+			{
+				Size =
+					UDim2.new(
+						progress,
+						0,
+						1,
+						0
+					)
+			}
+		):Play()
+
+		updateDisplay()
+
+		task.wait(0.5)
+
+	end
+
+end)
+
+-- =========================================================
+--                 ALTERAÇÃO DO TOKEN PRICE
+-- =========================================================
+
+Workspace:GetAttributeChangedSignal(
+	"TokenPrice"
+):Connect(
+	updateDisplay
+)
+
+-- =========================================================
+--          ATUALIZAÇÃO EM TEMPO REAL DOS TOKENS
+-- =========================================================
+
+LocalPlayer:GetAttributeChangedSignal(
+	"Tokens"
+):Connect(function()
+
+	lastReadTokenAmount =
+		lerQuantidadeTokens()
+
+	updateDisplay()
+
+end)
+
+-- =========================================================
+--                     INICIALIZAÇÃO
+-- =========================================================
+
+updateDisplay()
