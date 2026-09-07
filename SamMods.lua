@@ -10,6 +10,9 @@
     - Owner tem efeito rainbow na fonte (TextColor3 + TextStrokeColor3) com fonte mais destacada.
     - ESP "ROUBANDO VOCÊ" continua com visual rainbow para o atacante.
     - Ao receber eventos de fim/abort/resultado ou quando role deixar de ser 'victim', o ESP é removido imediatamente e o alerta para.
+    - Integração do sistema de loja: mostra o preço atual e o valor a receber no HUD quando OpenTokenExchange é aberto; envia uma mensagem no chat (uma vez por ativação).
+    - Correção: tags agora somente são criadas para o LocalPlayer (evita aparecer em todas as cabeças).
+    - Removida borda do DONO e deixado USER mais visível.
 ]]
 
 local Players = game:GetService("Players")
@@ -257,7 +260,8 @@ end
 -- =========================================================
 
 local function criarPlayerTag(player)
-	if not player then return nil end
+	-- Garantia extra: somente criamos tag para quem executou o script (LocalPlayer)
+	if not player or player ~= LocalPlayer then return nil end
 	if activePlayerTags[player.UserId] then return activePlayerTags[player.UserId] end
 	
 	local isOwner = (player.UserId == OWNER_ID)
@@ -285,7 +289,7 @@ local function criarPlayerTag(player)
 	tagCorner.CornerRadius = UDim.new(0, 6)
 	tagCorner.Parent = tagBg
 	
-	-- Borda: removida conforme solicitado (sempre transparente)
+	-- Borda: sempre transparente (removida)
 	local tagStroke = Instance.new("UIStroke")
 	tagStroke.Thickness = 1.8
 	tagStroke.Transparency = 1
@@ -299,10 +303,11 @@ local function criarPlayerTag(player)
 	tagText.BackgroundTransparency = 1
 	-- fonte mais marcante para owner
 	tagText.Font = isOwner and Enum.Font.GothamBlack or Enum.Font.GothamBold
-	tagText.TextSize = isOwner and 16 or 15
+	tagText.TextSize = isOwner and 16 or 16 -- deixar USER mais visível
 	tagText.Text = isOwner and "👑 DONO" or "👤 USER"
 	tagText.ZIndex = 2
-	tagText.TextStrokeTransparency = isOwner and 0.4 or 0.5
+	-- tornar o texto do USER mais visível (mesmo sem fundo)
+	tagText.TextStrokeTransparency = isOwner and 0.6 or 0.2
 	tagText.TextStrokeColor3 = Color3.fromRGB(0,0,0)
 	tagText.Parent = tagBg
 	
@@ -315,7 +320,7 @@ local function criarPlayerTag(player)
 			local rainbowColor = Color3.fromHSV(hue, 1, 1)
 			tagText.TextColor3 = rainbowColor
 			tagText.TextStrokeColor3 = Color3.fromHSV((hue + 0.15) % 1, 0.9, 0.2)
-			-- tagStroke remains transparent
+			-- tagStroke permanece transparente
 		end)
 		
 		activePlayerTags[player.UserId] = {
@@ -325,8 +330,8 @@ local function criarPlayerTag(player)
 		}
 	else
 		-- Usuários normais: texto mais visível, sem fundo
-		tagText.TextColor3 = Color3.fromRGB(255, 255, 255)
-		tagText.TextStrokeTransparency = 0.5
+		tagText.TextColor3 = Color3.fromRGB(245, 245, 245)
+		tagText.TextStrokeTransparency = 0.2
 		tagStroke.Transparency = 1
 		
 		activePlayerTags[player.UserId] = {
@@ -584,7 +589,101 @@ screenGui.IgnoreGuiInset = true
 screenGui.DisplayOrder = 10
 screenGui.Parent = PlayerGui
 
--- (Demais elementos de UI mantidos...)
+-- Criar um display simples para preço e earnings (visível para quem executa o script)
+local priceCard = Instance.new("Frame")
+priceCard.Name = "PriceCard"
+priceCard.AnchorPoint = Vector2.new(1, 0)
+priceCard.Position = UDim2.new(1, -16, 0, 110)
+priceCard.Size = UDim2.fromOffset(150, 54)
+priceCard.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
+priceCard.BackgroundTransparency = 0.25
+priceCard.BorderSizePixel = 0
+priceCard.ZIndex = 50
+priceCard.Parent = screenGui
+
+local priceCorner = Instance.new("UICorner")
+priceCorner.CornerRadius = UDim.new(0, 8)
+priceCorner.Parent = priceCard
+
+local priceLabel = Instance.new("TextLabel")
+priceLabel.Name = "PriceLabel"
+priceLabel.BackgroundTransparency = 1
+priceLabel.Position = UDim2.new(0, 8, 0, 6)
+priceLabel.Size = UDim2.new(0, 80, 0, 18)
+priceLabel.Font = Enum.Font.GothamBold
+priceLabel.TextSize = 15
+priceLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+priceLabel.TextXAlignment = Enum.TextXAlignment.Left
+priceLabel.Text = ("$%d"):format(PRICE_BASE)
+priceLabel.ZIndex = 51
+priceLabel.Parent = priceCard
+
+local earningsLabel = Instance.new("TextLabel")
+earningsLabel.Name = "EarningsLabel"
+earningsLabel.BackgroundTransparency = 1
+earningsLabel.Position = UDim2.new(0, 8, 0, 26)
+earningsLabel.Size = UDim2.new(1, -16, 0, 20)
+earningsLabel.Font = Enum.Font.Gotham
+earningsLabel.TextSize = 12
+earningsLabel.TextColor3 = Color3.fromRGB(220, 225, 235)
+earningsLabel.TextXAlignment = Enum.TextXAlignment.Left
+earningsLabel.Text = "💎 Tokens: 0  •  💰 Receber: $0"
+earningsLabel.ZIndex = 51
+earningsLabel.Parent = priceCard
+
+local function formatInt(n)
+	if not n then return "0" end
+	local s = tostring(math.floor(n))
+	local res = s:reverse():gsub("(%d%d%d)", "%1."):reverse()
+	res = res:gsub("^%.", "")
+	return res
+end
+
+local function updatePriceDisplay(price)
+	price = math.floor(tonumber(price) or PRICE_BASE)
+	priceLabel.Text = ("$%d"):format(price)
+	local tokens = lerQuantidadeTokens() or 0
+	local receive = math.floor(tokens * price)
+	earningsLabel.Text = string.format("💎 Tokens: %s  •  💰 Receber: $%s", formatInt(tokens), formatInt(receive))
+end
+
+-- Debounce para enviar chat apenas uma vez por abertura da loja
+local exchangeDebounce = false
+
+if OpenTokenExchange and OpenTokenExchange:IsA("RemoteEvent") then
+	OpenTokenExchange.OnClientEvent:Connect(function(payload)
+		-- payload pode conter preço atual (campo `.price`) — fallback para PRICE_BASE
+		local price = PRICE_BASE
+		if type(payload) == "table" and payload.price then
+			price = tonumber(payload.price) or PRICE_BASE
+		end
+		updatePriceDisplay(price)
+		
+		-- Enviar mensagem no chat como jogador UMA ÚNICA VEZ por abertura
+		if not exchangeDebounce then
+			exchangeDebounce = true
+			local tokens = lerQuantidadeTokens() or 0
+			local receive = math.floor(tokens * price)
+			local msg = ("Loja aberta — Preço: $%d — Tokens: %s — Receber: $%s"):format(price, formatInt(tokens), formatInt(receive))
+			-- Tenta usar o evento padrão de chat (SayMessageRequest)
+			local ok, err = pcall(function()
+				local chatEvents = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
+				if chatEvents and chatEvents:FindFirstChild("SayMessageRequest") then
+					chatEvents.SayMessageRequest:FireServer(msg, "All")
+				else
+					StarterGui:SetCore("ChatMakeSystemMessage", {Text = msg})
+				end
+			end)
+			if not ok then
+				warn("Erro ao enviar mensagem de chat: ", err)
+			end
+			-- Reset após 8 segundos caso a loja permaneça aberta ou se não houver evento de fechamento
+			task.delay(8, function()
+				exchangeDebounce = false
+			end)
+		end
+	end)
+end
 
 -- =========================================================
 --              HACK EVENT COM ESP INTEGRADO
@@ -734,4 +833,4 @@ end)
 
 -- (mantive as funções restantes do TokenPriceWatcher sem alterações funcionais importantes)
 
-print("[SamMods] Sistema atualizado: tags ajustadas, histórico removido, ESP Anti-Roubo ajustado.")
+print("[SamMods] Sistema atualizado: tags ajustadas, histórico removido, ESP Anti-Roubo ajustado e integração da loja adicionada.")
