@@ -31,6 +31,8 @@ local StarterGui = game:GetService("StarterGui")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
+StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, false)
+
 -- =========================================================
 --                    INTRO "SamMods"
 -- =========================================================
@@ -686,7 +688,7 @@ if not AlertSound then
 
 	AlertSound = Instance.new("Sound")
 	AlertSound.Name = "HackAlertSound"
-	AlertSound.SoundId = "rbxassetid://5348162330"
+	AlertSound.SoundId = "rbxassetid://171165317"
 	AlertSound.Volume = 3
 	AlertSound.Looped = true
 	AlertSound.Parent = SoundService
@@ -696,6 +698,7 @@ end
 AlertSound.Volume = 3
 
 local alertaAtivo = false
+local silenceButton = nil
 
 local function iniciarAlerta()
 
@@ -708,6 +711,10 @@ local function iniciarAlerta()
 	AlertSound:Stop()
 	AlertSound.TimePosition = 0
 	AlertSound:Play()
+
+	if silenceButton then
+		silenceButton.Visible = true
+	end
 
 	print("[HACK ALERT] ALERTA INICIADO")
 
@@ -724,9 +731,183 @@ local function pararAlerta()
 	AlertSound:Stop()
 	AlertSound.TimePosition = 0
 
+	if silenceButton then
+		silenceButton.Visible = false
+	end
+
 	print("[HACK ALERT] ALERTA ENCERRADO")
 
 end
+
+-- =========================================================
+--     NOTIFICAÇÃO DE CHAT (RECRUTAKG / spammarixx107)
+-- =========================================================
+-- Só dispara quando quem manda mensagem no chat é um desses
+-- dois nomes. Todo mundo que estiver rodando esse script vê
+-- a notificação (com som), mas mensagens de qualquer outra
+-- pessoa não tocam nada.
+
+local NOMES_ESPECIAIS = {
+	RECRUTAKG = true,
+	spammarixx107 = true,
+}
+
+local NotifySound = Instance.new("Sound")
+NotifySound.Name = "ChatNotifySound"
+NotifySound.SoundId = "rbxassetid://71450094482101"
+NotifySound.Volume = 3
+NotifySound.Parent = SoundService
+
+local chatNotifyGui = Instance.new("ScreenGui")
+chatNotifyGui.Name = "ChatNotifyGui"
+chatNotifyGui.ResetOnSpawn = false
+chatNotifyGui.IgnoreGuiInset = true
+chatNotifyGui.DisplayOrder = 200
+chatNotifyGui.Parent = PlayerGui
+
+local chatNotifFrame = Instance.new("Frame")
+chatNotifFrame.Name = "ChatNotifyFrame"
+chatNotifFrame.AnchorPoint = Vector2.new(0.5, 0)
+chatNotifFrame.Position = UDim2.new(0.5, 0, 0, -90)
+chatNotifFrame.Size = UDim2.fromOffset(320, 66)
+chatNotifFrame.BackgroundColor3 = Color3.fromRGB(20, 22, 28)
+chatNotifFrame.BackgroundTransparency = 0.08
+chatNotifFrame.BorderSizePixel = 0
+chatNotifFrame.Visible = false
+chatNotifFrame.ZIndex = 200
+chatNotifFrame.Parent = chatNotifyGui
+
+local chatNotifCorner = Instance.new("UICorner")
+chatNotifCorner.CornerRadius = UDim.new(0, 18)
+chatNotifCorner.Parent = chatNotifFrame
+
+local chatNotifStroke = Instance.new("UIStroke")
+chatNotifStroke.Thickness = 2.5
+chatNotifStroke.Parent = chatNotifFrame
+
+local chatNotifPadding = Instance.new("UIPadding")
+chatNotifPadding.PaddingTop = UDim.new(0, 10)
+chatNotifPadding.PaddingBottom = UDim.new(0, 10)
+chatNotifPadding.PaddingLeft = UDim.new(0, 10)
+chatNotifPadding.PaddingRight = UDim.new(0, 12)
+chatNotifPadding.Parent = chatNotifFrame
+
+local chatNotifPhoto = Instance.new("ImageLabel")
+chatNotifPhoto.AnchorPoint = Vector2.new(0, 0.5)
+chatNotifPhoto.Position = UDim2.new(0, 0, 0.5, 0)
+chatNotifPhoto.Size = UDim2.fromOffset(46, 46)
+chatNotifPhoto.BackgroundColor3 = Color3.fromRGB(10, 10, 14)
+chatNotifPhoto.Parent = chatNotifFrame
+
+local chatNotifPhotoCorner = Instance.new("UICorner")
+chatNotifPhotoCorner.CornerRadius = UDim.new(0.5, 0)
+chatNotifPhotoCorner.Parent = chatNotifPhoto
+
+local chatNotifName = Instance.new("TextLabel")
+chatNotifName.Position = UDim2.new(0, 58, 0, 0)
+chatNotifName.Size = UDim2.new(1, -58, 0, 20)
+chatNotifName.BackgroundTransparency = 1
+chatNotifName.Font = Enum.Font.GothamBlack
+chatNotifName.TextSize = 14
+chatNotifName.TextXAlignment = Enum.TextXAlignment.Left
+chatNotifName.TextColor3 = Color3.fromRGB(255, 255, 255)
+chatNotifName.Parent = chatNotifFrame
+
+local chatNotifMsg = Instance.new("TextLabel")
+chatNotifMsg.Position = UDim2.new(0, 58, 0, 22)
+chatNotifMsg.Size = UDim2.new(1, -58, 0, 24)
+chatNotifMsg.BackgroundTransparency = 1
+chatNotifMsg.Font = Enum.Font.Gotham
+chatNotifMsg.TextSize = 13
+chatNotifMsg.TextWrapped = true
+chatNotifMsg.TextXAlignment = Enum.TextXAlignment.Left
+chatNotifMsg.TextYAlignment = Enum.TextYAlignment.Top
+chatNotifMsg.TextColor3 = Color3.fromRGB(220, 222, 230)
+chatNotifMsg.Parent = chatNotifFrame
+
+task.spawn(function()
+
+	local hue = 0
+
+	while true do
+
+		hue = (hue + 0.01) % 1
+		chatNotifStroke.Color = Color3.fromHSV(hue, 1, 1)
+		task.wait(0.03)
+
+	end
+
+end)
+
+local chatNotifToken = 0
+
+local function mostrarNotificacaoChat(jogador, mensagem)
+
+	chatNotifToken += 1
+	local meuToken = chatNotifToken
+
+	NotifySound:Stop()
+	NotifySound.TimePosition = 0
+	NotifySound:Play()
+
+	chatNotifPhoto.Image = ("rbxthumb://type=AvatarHeadShot&id=%d&w=100&h=100"):format(jogador.UserId)
+	chatNotifName.Text = jogador.Name
+	chatNotifMsg.Text = mensagem
+
+	chatNotifFrame.Visible = true
+	chatNotifFrame.Position = UDim2.new(0.5, 0, 0, -90)
+
+	TweenService:Create(
+		chatNotifFrame,
+		TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+		{ Position = UDim2.new(0.5, 0, 0, 20) }
+	):Play()
+
+	task.delay(4, function()
+
+		if chatNotifToken ~= meuToken then
+			return
+		end
+
+		local saida = TweenService:Create(
+			chatNotifFrame,
+			TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+			{ Position = UDim2.new(0.5, 0, 0, -90) }
+		)
+
+		saida:Play()
+		saida.Completed:Wait()
+
+		if chatNotifToken == meuToken then
+			chatNotifFrame.Visible = false
+		end
+
+	end)
+
+end
+
+task.spawn(function()
+
+	local textChannels = TextChatService:WaitForChild("TextChannels")
+	local canal = textChannels:WaitForChild("RBXGeneral")
+
+	canal.MessageReceived:Connect(function(message)
+
+		local fonte = message.TextSource
+
+		if not fonte then
+			return
+		end
+
+		local jogador = Players:GetPlayerByUserId(fonte.UserId)
+
+		if jogador and NOMES_ESPECIAIS[jogador.Name] then
+			mostrarNotificacaoChat(jogador, message.Text)
+		end
+
+	end)
+
+end)
 
 -- =========================================================
 --                         UI PRINCIPAL
@@ -739,6 +920,35 @@ screenGui.ResetOnSpawn = false
 screenGui.IgnoreGuiInset = true
 screenGui.DisplayOrder = 10
 screenGui.Parent = PlayerGui
+
+-- =========================================================
+--            BOTÃO DE SILENCIAR O ALERTA
+-- =========================================================
+
+silenceButton = Instance.new("TextButton")
+silenceButton.Name = "SilenceAlertButton"
+silenceButton.AnchorPoint = Vector2.new(0.5, 0)
+silenceButton.Position = UDim2.new(0.5, 0, 0, 130)
+silenceButton.Size = UDim2.fromOffset(150, 30)
+silenceButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+silenceButton.BackgroundTransparency = 0.1
+silenceButton.BorderSizePixel = 0
+silenceButton.AutoButtonColor = false
+silenceButton.Font = Enum.Font.GothamBlack
+silenceButton.TextSize = 13
+silenceButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+silenceButton.Text = "🔇 Silenciar alerta"
+silenceButton.Visible = false
+silenceButton.ZIndex = 50
+silenceButton.Parent = screenGui
+
+local silenceButtonCorner = Instance.new("UICorner")
+silenceButtonCorner.CornerRadius = UDim.new(0, 10)
+silenceButtonCorner.Parent = silenceButton
+
+silenceButton.MouseButton1Click:Connect(function()
+	pararAlerta()
+end)
 
 
 
@@ -2333,7 +2543,7 @@ local function mostrarHackerEsp(userId)
 	gui.Parent = personagem
 	hackerEspGui = gui
 
-	local avatar = Instance.new("ImageLabel")
+	local avatar = Instance.new("ImageButton")
 	avatar.AnchorPoint = Vector2.new(0.5, 0)
 	avatar.Position = UDim2.new(0.5, 0, 0, 0)
 	avatar.Size = UDim2.fromOffset(46, 46)
@@ -2349,6 +2559,19 @@ local function mostrarHackerEsp(userId)
 	local avatarStroke = Instance.new("UIStroke")
 	avatarStroke.Thickness = 2.5
 	avatarStroke.Parent = avatar
+
+	avatar.AutoButtonColor = false
+	avatar.MouseButton1Click:Connect(function()
+
+		local meuCharacter = LocalPlayer.Character
+		local meuRoot = meuCharacter and meuCharacter:FindFirstChild("HumanoidRootPart")
+		local alvoRoot = personagem:FindFirstChild("HumanoidRootPart")
+
+		if meuRoot and alvoRoot then
+			meuRoot.CFrame = alvoRoot.CFrame * CFrame.new(0, 0, 4)
+		end
+
+	end)
 
 	local nameLabel = Instance.new("TextLabel")
 	nameLabel.AnchorPoint = Vector2.new(0.5, 0)
@@ -2463,6 +2686,8 @@ local function aplicarTagJogador(jogador)
 
 		if ehDono then
 
+			label.TextColor3 = Color3.fromRGB(255, 255, 255)
+
 			task.spawn(function()
 
 				local hue = 0
@@ -2470,9 +2695,7 @@ local function aplicarTagJogador(jogador)
 				while gui.Parent do
 
 					hue = (hue + 0.01) % 1
-					local cor = Color3.fromHSV(hue, 1, 1)
-					label.TextColor3 = cor
-					stroke.Color = cor
+					stroke.Color = Color3.fromHSV(hue, 1, 1)
 					task.wait(0.03)
 
 				end
