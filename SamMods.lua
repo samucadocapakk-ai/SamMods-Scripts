@@ -31,8 +31,6 @@ local StarterGui = game:GetService("StarterGui")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
-StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, false)
-
 -- =========================================================
 --                    INTRO "SamMods"
 -- =========================================================
