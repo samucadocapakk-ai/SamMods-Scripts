@@ -1148,7 +1148,7 @@ local barraBotoes = novo("Frame", {
 	Name = "SideButtons",
 	AnchorPoint = Vector2.new(1, 0),
 	Position = UDim2.new(0, -6, 0, 0),
-	Size = UDim2.fromOffset(24, CARD_H),
+	Size = UDim2.fromOffset(24, 112),
 	BackgroundTransparency = 1,
 	ZIndex = 15,
 }, container)
@@ -1197,6 +1197,7 @@ end
 local btnConfig = botaoIcone("⚙", 1, "BtnConfig")
 local btnSom = botaoIcone("🔔", 2, "BtnSom")
 local btnChat = botaoIcone("📢", 3, "BtnChat")
+local btnFling = botaoIcone("✈", 4, "BtnFling")
 
 -- =========================================================
 --             BOTÕES DE AÇÃO CONTRA O LADRÃO
@@ -1231,20 +1232,263 @@ local lockButton = botaoLargo("LockOnThief", "🔓 Travar no ladrão", CORES.Fun
 local teleportButton = botaoLargo("GoToThief", "🏃 Ir até o ladrão", CORES.Perigo, 40)
 
 -- =========================================================
+--                         PAINEL FLING
+-- =========================================================
+
+local flingPainel = novo("Frame", {
+	Name = "FlingPainel",
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.fromScale(0.5, 0.5),
+	Size = UDim2.fromOffset(260, 300),
+	BackgroundColor3 = CORES.Fundo,
+	BackgroundTransparency = 0.08,
+	BorderSizePixel = 0,
+	Visible = false,
+	Active = true,
+	ZIndex = 40,
+}, gui)
+
+cantos(flingPainel, 12)
+contorno(flingPainel, CORES.Base, 1.2, 0.55)
+
+local flingTitulo = novo("TextLabel", {
+	Position = UDim2.fromOffset(10, 8),
+	Size = UDim2.new(1, -42, 0, 18),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBlack,
+	TextSize = 13,
+	TextColor3 = CORES.Texto,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "✈ FLING",
+	ZIndex = 41,
+}, flingPainel)
+
+local flingFechar = novo("TextButton", {
+	Name = "FecharFling",
+	AnchorPoint = Vector2.new(1, 0),
+	Position = UDim2.new(1, -8, 0, 7),
+	Size = UDim2.fromOffset(24, 22),
+	BackgroundColor3 = CORES.Fundo2,
+	BackgroundTransparency = 0.15,
+	BorderSizePixel = 0,
+	AutoButtonColor = false,
+	Font = Enum.Font.GothamBold,
+	TextSize = 12,
+	TextColor3 = CORES.Texto,
+	Text = "X",
+	ZIndex = 43,
+}, flingPainel)
+
+cantos(flingFechar, 6)
+contorno(flingFechar, CORES.Texto, 1, 0.75)
+
+local flingStatus = novo("TextLabel", {
+	Position = UDim2.fromOffset(10, 30),
+	Size = UDim2.new(1, -20, 0, 16),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamMedium,
+	TextSize = 10,
+	TextColor3 = CORES.TextoFraco,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "Clique em um jogador para fazer o fling.",
+	ZIndex = 41,
+}, flingPainel)
+
+local flingLista = novo("ScrollingFrame", {
+	Name = "PlayerList",
+	Position = UDim2.fromOffset(8, 50),
+	Size = UDim2.new(1, -16, 1, -58),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	ScrollBarThickness = 3,
+	ScrollBarImageColor3 = CORES.Base,
+	CanvasSize = UDim2.fromOffset(0, 0),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	ScrollingDirection = Enum.ScrollingDirection.Y,
+	ZIndex = 41,
+}, flingPainel)
+
+novo("UIListLayout", {
+	Padding = UDim.new(0, 5),
+	SortOrder = Enum.SortOrder.LayoutOrder,
+}, flingLista)
+
+local SkidFling
+
+local function criarFlingJogador(jogador, ordem)
+	local linha = novo("TextButton", {
+		Name = "Player_" .. jogador.Name,
+		Size = UDim2.new(1, -4, 0, 42),
+		BackgroundColor3 = CORES.Fundo2,
+		BackgroundTransparency = 0.2,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Font = Enum.Font.GothamBold,
+		TextSize = 11,
+		TextColor3 = CORES.Texto,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = jogador.DisplayName .. "  @" .. jogador.Name,
+		LayoutOrder = ordem,
+		ZIndex = 42,
+	}, flingLista)
+
+	cantos(linha, 8)
+	contorno(linha, CORES.Texto, 1, 0.82)
+
+	linha.MouseEnter:Connect(function()
+		tween(linha, { BackgroundTransparency = 0.05 }, 0.15)
+	end)
+
+	linha.MouseLeave:Connect(function()
+		tween(linha, { BackgroundTransparency = 0.2 }, 0.15)
+	end)
+
+	linha.MouseButton1Click:Connect(function()
+		if not rodando then
+			return
+		end
+
+		flingStatus.Text = "Aplicando em @" .. jogador.Name .. "..."
+		linha.AutoButtonColor = false
+
+		task.spawn(function()
+			local sucesso, mensagem = SkidFling(jogador)
+
+			if sucesso then
+				flingStatus.Text = "Concluído: @" .. jogador.Name
+			else
+				flingStatus.Text = mensagem or ("Não foi possível usar em @" .. jogador.Name)
+			end
+		end)
+	end)
+
+	return linha
+end
+
+local function atualizarListaFling()
+	for _, item in ipairs(flingLista:GetChildren()) do
+		if item:IsA("TextButton") then
+			item:Destroy()
+		end
+	end
+
+	local jogadores = {}
+	for _, jogador in ipairs(Players:GetPlayers()) do
+		if jogador ~= LocalPlayer then
+			table.insert(jogadores, jogador)
+		end
+	end
+
+	table.sort(jogadores, function(a, b)
+		return a.Name:lower() < b.Name:lower()
+	end)
+
+	for ordem, jogador in ipairs(jogadores) do
+		criarFlingJogador(jogador, ordem)
+	end
+
+	if #jogadores == 0 then
+		local vazio = novo("TextLabel", {
+			Name = "SemJogadores",
+			Size = UDim2.new(1, -4, 0, 42),
+			BackgroundTransparency = 1,
+			Font = Enum.Font.GothamMedium,
+			TextSize = 11,
+			TextColor3 = CORES.TextoFraco,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Text = "Nenhum outro jogador disponível.",
+			ZIndex = 42,
+		}, flingLista)
+	end
+end
+
+do
+	local arrastandoFling = false
+	local inicioMouseFling
+	local inicioPosFling
+
+	flingPainel.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			arrastandoFling = true
+			inicioMouseFling = input.Position
+			inicioPosFling = flingPainel.Position
+		end
+	end)
+
+	jan:add(UserInputService.InputChanged:Connect(function(input)
+		if not arrastandoFling then
+			return
+		end
+
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement
+			and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+
+		local delta = input.Position - inicioMouseFling
+		local viewport = Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize
+
+		if not viewport then
+			return
+		end
+
+		local halfX = 130
+		local halfY = 150
+
+		flingPainel.AnchorPoint = Vector2.new(0.5, 0.5)
+		flingPainel.Position = UDim2.fromOffset(
+			math.clamp(
+				inicioPosFling.X.Scale * viewport.X + inicioPosFling.X.Offset + delta.X,
+				halfX + 8,
+				math.max(halfX + 8, viewport.X - halfX - 8)
+			),
+			math.clamp(
+				inicioPosFling.Y.Scale * viewport.Y + inicioPosFling.Y.Offset + delta.Y,
+				halfY + 8,
+				math.max(halfY + 8, viewport.Y - halfY - 8)
+			)
+		)
+	end))
+
+	jan:add(UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			arrastandoFling = false
+		end
+	end)
+end
+
+flingFechar.MouseButton1Click:Connect(function()
+	flingPainel.Visible = false
+end)
+
+local function alternarFlingPainel()
+	flingPainel.Visible = not flingPainel.Visible
+
+	if flingPainel.Visible then
+		atualizarListaFling()
+	end
+end
+
+jan:add(Players.PlayerAdded:Connect(atualizarListaFling))
+jan:add(Players.PlayerRemoving:Connect(atualizarListaFling))
+
+-- =========================================================
 --                  PAINEL (CONFIG / LOG / STATS)
 -- =========================================================
 
 local painel = novo("Frame", {
 	Name = "Painel",
-	AnchorPoint = Vector2.new(1, 0),
-	Position = UDim2.new(1, 0, 1, 76),
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.fromScale(0.5, 0.5),
 	Size = UDim2.fromOffset(268, 250),
 	BackgroundColor3 = CORES.Fundo,
 	BackgroundTransparency = 0.08,
 	BorderSizePixel = 0,
 	Visible = false,
 	ZIndex = 30,
-}, container)
+}, gui)
 
 cantos(painel, 12)
 contorno(painel, CORES.Base, 1.2, 0.6)
@@ -1257,7 +1501,7 @@ novo("UIPadding", {
 }, painel)
 
 local painelTitulo = novo("TextLabel", {
-	Size = UDim2.new(1, 0, 0, 16),
+	Size = UDim2.new(1, -30, 0, 16),
 	BackgroundTransparency = 1,
 	Font = Enum.Font.GothamBlack,
 	TextSize = 12,
@@ -1266,6 +1510,33 @@ local painelTitulo = novo("TextLabel", {
 	Text = "SamMods • Painel",
 	ZIndex = 31,
 }, painel)
+
+local painelFechar = novo("TextButton", {
+	Name = "FecharPainel",
+	AnchorPoint = Vector2.new(1, 0),
+	Position = UDim2.new(1, 0, 0, 0),
+	Size = UDim2.fromOffset(22, 22),
+	BackgroundColor3 = CORES.Fundo2,
+	BackgroundTransparency = 0.15,
+	BorderSizePixel = 0,
+	AutoButtonColor = false,
+	Font = Enum.Font.GothamBold,
+	TextSize = 12,
+	TextColor3 = CORES.Texto,
+	Text = "X",
+	ZIndex = 33,
+}, painel)
+
+cantos(painelFechar, 6)
+contorno(painelFechar, CORES.Texto, 1, 0.75)
+
+painelFechar.MouseEnter:Connect(function()
+	tween(painelFechar, { BackgroundTransparency = 0 }, 0.15)
+end)
+
+painelFechar.MouseLeave:Connect(function()
+	tween(painelFechar, { BackgroundTransparency = 0.15 }, 0.15)
+end)
 
 Rainbow.add(painelTitulo, function(cor)
 	painelTitulo.TextColor3 = cor
@@ -2778,6 +3049,205 @@ atualizarLogUI()
 selecionarAba("Config")
 
 -- =========================================================
+--                         FLING
+-- =========================================================
+
+local FlingAtivo = false
+getgenv().OldPos = nil
+getgenv().FPDH = Workspace.FallenPartsDestroyHeight
+
+SkidFling = function(TargetPlayer)
+	if FlingAtivo then
+		return false, "Fling já está em andamento."
+	end
+
+	FlingAtivo = true
+
+	local Character = LocalPlayer.Character
+	local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
+	local RootPart = Humanoid and Humanoid.RootPart
+	local TCharacter = TargetPlayer and TargetPlayer.Character
+
+	if not TCharacter then
+		FlingAtivo = false
+		return false, "O personagem do jogador não está disponível."
+	end
+
+	local THumanoid
+	local TRootPart
+	local THead
+	local Accessory
+	local Handle
+
+	if TCharacter:FindFirstChildOfClass("Humanoid") then
+		THumanoid = TCharacter:FindFirstChildOfClass("Humanoid")
+	end
+
+	if THumanoid and THumanoid.RootPart then
+		TRootPart = THumanoid.RootPart
+	end
+
+	if TCharacter:FindFirstChild("Head") then
+		THead = TCharacter.Head
+	end
+
+	if TCharacter:FindFirstChildOfClass("Accessory") then
+		Accessory = TCharacter:FindFirstChildOfClass("Accessory")
+	end
+
+	if Accessory and Accessory:FindFirstChild("Handle") then
+		Handle = Accessory.Handle
+	end
+
+	if Character and Humanoid and RootPart then
+		if RootPart.Velocity.Magnitude < 50 then
+			getgenv().OldPos = RootPart.CFrame
+		end
+
+		if THumanoid and THumanoid.Sit then
+			FlingAtivo = false
+			return false, TargetPlayer.Name .. " está sentado."
+		end
+
+		if THead then
+			Workspace.CurrentCamera.CameraSubject = THead
+		elseif Handle then
+			Workspace.CurrentCamera.CameraSubject = Handle
+		elseif THumanoid and TRootPart then
+			Workspace.CurrentCamera.CameraSubject = THumanoid
+		end
+
+		if not TCharacter:FindFirstChildWhichIsA("BasePart") then
+			FlingAtivo = false
+			return false, TargetPlayer.Name .. " não possui partes válidas."
+		end
+
+		local FPos = function(BasePart, Pos, Ang)
+			RootPart.CFrame = CFrame.new(BasePart.Position) * Pos * Ang
+			Character:SetPrimaryPartCFrame(CFrame.new(BasePart.Position) * Pos * Ang)
+			RootPart.Velocity = Vector3.new(9e7, 9e7 * 10, 9e7)
+			RootPart.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
+		end
+
+		local SFBasePart = function(BasePart)
+			local TimeToWait = 2
+			local Time = tick()
+			local Angle = 0
+
+			repeat
+				if RootPart and THumanoid then
+					if BasePart.Velocity.Magnitude < 50 then
+						Angle = Angle + 100
+
+						FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+
+						task.wait()
+
+						FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+
+						task.wait()
+
+						FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+
+						task.wait()
+
+						FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+
+						task.wait()
+
+						FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
+
+						task.wait()
+
+						FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
+
+						task.wait()
+					else
+						FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+
+						task.wait()
+
+						FPos(BasePart, CFrame.new(0, -1.5, -THumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
+
+						task.wait()
+
+						FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+
+						task.wait()
+
+						FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
+
+						task.wait()
+
+						FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+
+						task.wait()
+
+						FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
+
+						task.wait()
+
+						FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+
+						task.wait()
+					end
+				end
+			until Time + TimeToWait < tick() or not FlingAtivo
+		end
+
+		Workspace.FallenPartsDestroyHeight = 0 / 0
+
+		local BV = Instance.new("BodyVelocity")
+		BV.Parent = RootPart
+		BV.Velocity = Vector3.new(0, 0, 0)
+		BV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+
+		Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+
+		if TRootPart then
+			SFBasePart(TRootPart)
+		elseif THead then
+			SFBasePart(THead)
+		elseif Handle then
+			SFBasePart(Handle)
+		else
+			BV:Destroy()
+			Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
+			FlingAtivo = false
+			return false, TargetPlayer.Name .. " não possui partes válidas."
+		end
+
+		BV:Destroy()
+		Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
+		Workspace.CurrentCamera.CameraSubject = Humanoid
+
+		if getgenv().OldPos then
+			repeat
+				RootPart.CFrame = getgenv().OldPos * CFrame.new(0, .5, 0)
+				Character:SetPrimaryPartCFrame(getgenv().OldPos * CFrame.new(0, .5, 0))
+				Humanoid:ChangeState("GettingUp")
+
+				for _, part in pairs(Character:GetChildren()) do
+					if part:IsA("BasePart") then
+						part.Velocity, part.RotVelocity = Vector3.new(), Vector3.new()
+					end
+				end
+
+				task.wait()
+			until (RootPart.Position - getgenv().OldPos.p).Magnitude < 25
+
+			Workspace.FallenPartsDestroyHeight = getgenv().FPDH
+		end
+	else
+		FlingAtivo = false
+		return false, "Seu personagem não está pronto."
+	end
+
+	FlingAtivo = false
+	return true, TargetPlayer.Name .. " foi atingido pelo fling."
+end
+
+-- =========================================================
 --                   AÇÕES DOS BOTÕES
 -- =========================================================
 
@@ -2793,6 +3263,12 @@ local function alternarPainel()
 end
 
 btnConfig.MouseButton1Click:Connect(alternarPainel)
+
+painelFechar.MouseButton1Click:Connect(function()
+	painel.Visible = false
+end)
+
+btnFling.MouseButton1Click:Connect(alternarFlingPainel)
 
 btnSom.MouseButton1Click:Connect(function()
 
