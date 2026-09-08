@@ -1626,29 +1626,11 @@ maxNotification.Size = UDim2.fromOffset(
 	48
 )
 
-maxNotification.BackgroundColor3 =
-	Color3.fromRGB(
-		0,
-		0,
-		0
-	)
-
-maxNotification.BackgroundTransparency = 0
+maxNotification.BackgroundTransparency = 1
 maxNotification.BorderSizePixel = 0
 maxNotification.Visible = false
 maxNotification.ZIndex = 100
 maxNotification.Parent = screenGui
-
-local notificationCorner = Instance.new("UICorner")
-
-notificationCorner.CornerRadius =
-	UDim.new(
-		0,
-		12
-	)
-
-notificationCorner.Parent =
-	maxNotification
 
 local notificationText = Instance.new("TextLabel")
 
@@ -1659,15 +1641,15 @@ notificationText.BackgroundTransparency = 1
 notificationText.Size =
 	UDim2.new(
 		1,
-		-16,
+		0,
 		1,
-		0
+		-8
 	)
 
 notificationText.Position =
 	UDim2.new(
 		0,
-		8,
+		0,
 		0,
 		0
 	)
@@ -1676,10 +1658,13 @@ notificationText.Font =
 	Enum.Font.GothamBlack
 
 notificationText.TextSize =
-	13
+	16
 
 notificationText.TextWrapped =
 	true
+
+notificationText.TextXAlignment =
+	Enum.TextXAlignment.Center
 
 notificationText.Text =
 	"🌈  LOJA NO MÁXIMO!  •  $15  💎"
@@ -1696,6 +1681,38 @@ notificationText.ZIndex =
 
 notificationText.Parent =
 	maxNotification
+
+local notificationTextStroke = Instance.new("UIStroke")
+notificationTextStroke.Color = Color3.fromRGB(0, 0, 0)
+notificationTextStroke.Thickness = 2
+notificationTextStroke.Parent = notificationText
+
+local notificationBar = Instance.new("Frame")
+notificationBar.Name = "RainbowBar"
+notificationBar.AnchorPoint = Vector2.new(0.5, 1)
+notificationBar.Position = UDim2.new(0.5, 0, 1, 4)
+notificationBar.Size = UDim2.fromOffset(120, 3)
+notificationBar.BorderSizePixel = 0
+notificationBar.ZIndex = 101
+notificationBar.Parent = maxNotification
+
+local notificationBarCorner = Instance.new("UICorner")
+notificationBarCorner.CornerRadius = UDim.new(0.5, 0)
+notificationBarCorner.Parent = notificationBar
+
+task.spawn(function()
+
+	local hue = 0
+
+	while true do
+
+		hue = (hue + 0.01) % 1
+		notificationBar.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
+		task.wait(0.03)
+
+	end
+
+end)
 
 -- =========================================================
 --               FUNÇÃO DE MENSAGEM NO CHAT
@@ -1762,8 +1779,6 @@ local function mostrarNotificacaoMaximo()
 
 	maxNotification.Visible = true
 
-	maxNotification.BackgroundTransparency = 0
-
 	maxNotification.Position =
 		UDim2.new(
 			0.5,
@@ -1826,9 +1841,7 @@ local function mostrarNotificacaoMaximo()
 								0,
 								0,
 								55
-							),
-
-						BackgroundTransparency = 1
+							)
 					}
 				)
 
