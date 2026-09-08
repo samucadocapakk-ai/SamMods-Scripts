@@ -106,6 +106,7 @@ local CONFIG = {
 		tagsJogadores = true,
 		autoTravar = false,
 		notificacoes = true,
+		travadoHud = false,
 	},
 
 	-- Metas (0 = desligado)
@@ -1257,14 +1258,15 @@ novo("UIPadding", {
 	PaddingRight = UDim.new(0, 10),
 }, painel)
 
--- Arrastar painel de configurações independente
+-- Arrastar painel de configurações pelo título
 do
 	local arrastando = false
 	local inicioMouse
 	local inicioPos
 
-	painel.InputBegan:Connect(function(input)
+	painelTitulo.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			if S.travadoHud then return end
 			arrastando = true
 			inicioMouse = input.Position
 			inicioPos = painel.AbsolutePosition
@@ -1761,6 +1763,7 @@ do
 	card.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1
 			or input.UserInputType == Enum.UserInputType.Touch then
+			if S.travadoHud then return end
 			arrastando = true
 			moveu = false
 			inicioMouse = input.Position
@@ -2731,23 +2734,25 @@ linhaToggle(abaConfig, "autoTravar", "🔒 Travar no ladrão automático", 7)
 
 linhaToggle(abaConfig, "notificacoes", "🔔 Notificações na tela", 8)
 
-linhaTexto(abaConfig, "", 9)
-linhaTexto(abaConfig, "Metas (0 = desligado)", 10)
+linhaToggle(abaConfig, "travadoHud", "🔒 Travar HUD (sem mover painéis)", 9)
 
-linhaInput(abaConfig, "💎 Avisar com tokens ≥", metaTokens, 11, function(valor)
+linhaTexto(abaConfig, "", 10)
+linhaTexto(abaConfig, "Metas (0 = desligado)", 11)
+
+linhaInput(abaConfig, "💎 Avisar com tokens ≥", metaTokens, 12, function(valor)
 	metaTokens = valor
 	metaTokensAvisada = false
 end)
 
-linhaInput(abaConfig, "💰 Avisar com valor ≥", metaValor, 12, function(valor)
+linhaInput(abaConfig, "💰 Avisar com valor ≥", metaValor, 13, function(valor)
 	metaValor = valor
 	metaValorAvisada = false
 end)
 
-linhaTexto(abaConfig, "", 13)
-linhaTexto(abaConfig, "Atalhos: F1 esconder • F2 painel • F3 som", 14)
-linhaTexto(abaConfig, "F4 mandar mensagem • F5 ir até o ladrão", 15)
-linhaTexto(abaConfig, "Arraste o card para mover o painel.", 16)
+linhaTexto(abaConfig, "", 14)
+linhaTexto(abaConfig, "Atalhos: F1 esconder • F2 painel • F3 som", 15)
+linhaTexto(abaConfig, "F4 mandar mensagem • F5 ir até o ladrão", 16)
+linhaTexto(abaConfig, "Arraste os painéis pelo título (nome).", 17)
 
 -- =========================================================
 --                  CONTEÚDO DA ABA STATS
@@ -2864,10 +2869,24 @@ Rainbow.add(playersTitulo, function(cor)
 	playersTitulo.TextColor3 = cor
 end)
 
--- Botões de ação no topo do painel
-local acoesFrame = novo("Frame", {
+-- Lista scrollable de jogadores (ocupa o meio do painel)
+local playersLista = novo("ScrollingFrame", {
 	Position = UDim2.new(0, 0, 0, 22),
-	Size = UDim2.new(1, 0, 0, 28),
+	Size = UDim2.new(1, 0, 1, -66),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	ScrollBarThickness = 3,
+	ScrollBarImageColor3 = CORES.Base,
+	CanvasSize = UDim2.new(0, 0, 0, 0),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	ZIndex = 31,
+}, painelPlayers)
+
+-- Botões de ação na parte de BAIXO do painel
+local acoesFrame = novo("Frame", {
+	AnchorPoint = Vector2.new(0, 1),
+	Position = UDim2.new(0, 0, 1, -8),
+	Size = UDim2.new(1, 0, 0, 32),
 	BackgroundTransparency = 1,
 	ZIndex = 31,
 }, painelPlayers)
@@ -2905,32 +2924,20 @@ local btnGrudarPlayer = botaoAcao("🔒 Grudar", CORES.Fundo2, 1)
 local btnTpPlayer = botaoAcao("🏃 TP", CORES.Perigo, 2)
 local btnCameraPlayer = botaoAcao("📷 Câmera", Color3.fromRGB(50, 90, 170), 3)
 
--- Lista scrollable de jogadores
-local playersLista = novo("ScrollingFrame", {
-	Position = UDim2.new(0, 0, 0, 56),
-	Size = UDim2.new(1, 0, 1, -56),
-	BackgroundTransparency = 1,
-	BorderSizePixel = 0,
-	ScrollBarThickness = 3,
-	ScrollBarImageColor3 = CORES.Base,
-	CanvasSize = UDim2.new(0, 0, 0, 0),
-	AutomaticCanvasSize = Enum.AutomaticSize.Y,
-	ZIndex = 31,
-}, painelPlayers)
-
 novo("UIListLayout", {
 	Padding = UDim.new(0, 3),
 	SortOrder = Enum.SortOrder.LayoutOrder,
 }, playersLista)
 
--- Arrastar painel de jogadores independente
+-- Arrastar painel de jogadores pelo título
 do
 	local arrastando = false
 	local inicioMouse
 	local inicioPos
 
-	painelPlayers.InputBegan:Connect(function(input)
+	playersTitulo.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			if S.travadoHud then return end
 			arrastando = true
 			inicioMouse = input.Position
 			inicioPos = painelPlayers.AbsolutePosition
@@ -2995,8 +3002,11 @@ local function cameraParaJogadorSelecionado()
 	local camera = Workspace.CurrentCamera
 	camera.CameraType = Enum.CameraType.Scriptable
 	camera.CFrame = CFrame.new(alvo.Position + Vector3.new(0, 5, 10), alvo.Position)
-	task.wait(0.08)
-	camera.CameraType = Enum.CameraType.Custom
+	task.delay(3, function()
+		if camera then
+			camera.CameraType = Enum.CameraType.Custom
+		end
+	end)
 end
 
 -- Itens da lista para highlight de seleção
@@ -3086,17 +3096,21 @@ local function atualizarListaPlayers()
 			if jogadorSelecionado then
 				local ant = itensPlayer[jogadorSelecionado.UserId]
 				if ant then
-					tween(ant.frame, { BackgroundTransparency = 0.35 }, 0.15)
+					tween(ant.frame, { BackgroundTransparency = 0.35, BackgroundColor3 = CORES.Fundo2 }, 0.15)
 					ant.stroke.Thickness = 0
 				end
 			end
 
-			-- Selecionar novo
+			-- Selecionar novo — fundo azul bem visível + borda grossa
 			jogadorSelecionado = jogador
-			tween(item, { BackgroundTransparency = 0.1 }, 0.15)
-			itemStroke.Thickness = 1.2
+			tween(item, {
+				BackgroundTransparency = 0,
+				BackgroundColor3 = Color3.fromRGB(28, 60, 110),
+			}, 0.15)
+			itemStroke.Thickness = 2
+			itemStroke.Color = CORES.Base
 
-			-- Se estava grudado, parar e resetar botão
+			-- Se estava grudado em outro, parar e resetar botão
 			if grudarJogadorAtivo then
 				pararGrudarJogador()
 				btnGrudarPlayer.Text = "🔒 Grudar"
@@ -3106,12 +3120,12 @@ local function atualizarListaPlayers()
 
 		item.MouseEnter:Connect(function()
 			if jogadorSelecionado ~= jogador then
-				tween(item, { BackgroundTransparency = 0.2 }, 0.1)
+				tween(item, { BackgroundTransparency = 0.15 }, 0.1)
 			end
 		end)
 		item.MouseLeave:Connect(function()
 			if jogadorSelecionado ~= jogador then
-				tween(item, { BackgroundTransparency = 0.35 }, 0.1)
+				tween(item, { BackgroundTransparency = 0.35, BackgroundColor3 = CORES.Fundo2 }, 0.1)
 			end
 		end)
 	end
@@ -3174,11 +3188,8 @@ local function alternarPainelPlayers()
 		atualizarListaPlayers()
 		painelPlayers.Size = UDim2.fromOffset(260, 0)
 		tween(painelPlayers, { Size = UDim2.fromOffset(260, 300) }, 0.2, Enum.EasingStyle.Back)
-	else
-		pararGrudarJogador()
-		btnGrudarPlayer.Text = "🔒 Grudar"
-		btnGrudarPlayer.BackgroundColor3 = CORES.Fundo2
 	end
+	-- Grudar/TP continuam ativos mesmo com painel fechado
 end
 
 btnPlayers.MouseButton1Click:Connect(alternarPainelPlayers)
