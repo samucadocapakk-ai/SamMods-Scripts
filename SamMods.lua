@@ -20,12 +20,8 @@
 	  • Pulsação do modo máximo usa UIScale em vez de mudar
 	    Size, então não briga mais com o hover nem desalinha
 	    os botões.
-	  • O botão 📢 saiu (a mensagem no chat continua automática
-	    e no F4). Agora são ⚙ painel, 🔔 som e 👁 modo discreto.
-	  • Suporte a celular: UI maior, arrasto por toque, painel
-	    como janela própria (centralizada, com ✕ e arrastável)
-	    que cabe na tela e se reajusta ao girar o aparelho, e um
-	    botão 👁 flutuante pra sair do modo discreto sem teclado.
+	  • O botão 📢 fazia outra coisa (ligava/desligava o som).
+	    Agora cada botão faz o que o ícone diz.
 	  • Limpeza remove TODAS as GUIs do mod ao recarregar.
 
 	NOVIDADES
@@ -125,14 +121,6 @@ local CONFIG = {
 		irAteLadrao = Enum.KeyCode.F5,
 	},
 }
-
--- Mobile: sem teclado, tudo precisa ser maior e tocável.
-local EH_MOBILE = UserInputService.TouchEnabled
-	and not UserInputService.KeyboardEnabled
-
-local ESCALA_UI = EH_MOBILE and 1.15 or 1
-local BTN_ICONE = EH_MOBILE and 32 or 24
-local BTN_ALTURA = EH_MOBILE and 34 or 28
 
 local CARD_W, CARD_H = 190, 70
 
@@ -925,8 +913,6 @@ local container = novo("Frame", {
 	ZIndex = 10,
 }, gui)
 
-novo("UIScale", { Scale = ESCALA_UI }, container)
-
 -- ---------------------- Aura externa ----------------------
 
 local aura = novo("Frame", {
@@ -1155,13 +1141,14 @@ end
 -- =========================================================
 --                    BOTÕES LATERAIS
 -- =========================================================
--- Coluna de botõezinhos à esquerda do card.
+-- Coluna de botõezinhos à esquerda do card. Cada um faz
+-- exatamente o que o ícone diz (na v1 o 📢 mexia no som).
 
 local barraBotoes = novo("Frame", {
 	Name = "SideButtons",
 	AnchorPoint = Vector2.new(1, 0),
 	Position = UDim2.new(0, -6, 0, 0),
-	Size = UDim2.fromOffset(BTN_ICONE, BTN_ICONE * 3 + 8),
+	Size = UDim2.fromOffset(24, 110),
 	BackgroundTransparency = 1,
 	ZIndex = 15,
 }, container)
@@ -1176,12 +1163,12 @@ local function botaoIcone(icone, ordem, dica)
 
 	local b = novo("TextButton", {
 		Name = "Icon_" .. ordem,
-		Size = UDim2.fromOffset(BTN_ICONE, BTN_ICONE),
+		Size = UDim2.fromOffset(24, 24),
 		BackgroundColor3 = CORES.Fundo2,
 		BackgroundTransparency = 0.1,
 		AutoButtonColor = false,
 		Font = Enum.Font.GothamBold,
-		TextSize = EH_MOBILE and 16 or 12,
+		TextSize = 12,
 		Text = icone,
 		TextColor3 = CORES.Texto,
 		LayoutOrder = ordem,
@@ -1209,28 +1196,8 @@ end
 
 local btnConfig = botaoIcone("⚙", 1, "BtnConfig")
 local btnSom = botaoIcone("🔔", 2, "BtnSom")
-local btnOlho = botaoIcone("👁", 3, "BtnDiscreto")
-
--- Botão solto que reaparece no modo discreto (no celular não
--- dá pra apertar F1 pra voltar).
-local btnRestaurar = novo("TextButton", {
-	Name = "BtnRestaurar",
-	AnchorPoint = Vector2.new(1, 0),
-	Position = UDim2.new(1, -8, 0, 8),
-	Size = UDim2.fromOffset(BTN_ICONE, BTN_ICONE),
-	BackgroundColor3 = CORES.Fundo,
-	BackgroundTransparency = 0.45,
-	AutoButtonColor = false,
-	Font = Enum.Font.GothamBold,
-	TextSize = EH_MOBILE and 16 or 12,
-	Text = "👁",
-	TextColor3 = CORES.Texto,
-	TextTransparency = 0.35,
-	Visible = false,
-	ZIndex = 40,
-}, gui)
-
-cantos(btnRestaurar, 8)
+local btnChat = botaoIcone("📢", 3, "BtnChat")
+local btnPlayers = botaoIcone("👥", 4, "BtnPlayers")
 
 -- =========================================================
 --             BOTÕES DE AÇÃO CONTRA O LADRÃO
@@ -1242,13 +1209,13 @@ local function botaoLargo(nome, texto, corFundo, y)
 		Name = nome,
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, 0, 1, y),
-		Size = UDim2.fromOffset(CARD_W, BTN_ALTURA),
+		Size = UDim2.fromOffset(CARD_W, 28),
 		BackgroundColor3 = corFundo,
 		BackgroundTransparency = 0.1,
 		BorderSizePixel = 0,
 		AutoButtonColor = false,
 		Font = Enum.Font.GothamBlack,
-		TextSize = EH_MOBILE and 13 or 12,
+		TextSize = 12,
 		TextColor3 = CORES.Texto,
 		Text = texto,
 		Visible = false,
@@ -1262,44 +1229,20 @@ local function botaoLargo(nome, texto, corFundo, y)
 end
 
 local lockButton = botaoLargo("LockOnThief", "🔓 Travar no ladrão", CORES.Fundo2, 8)
-local teleportButton = botaoLargo(
-	"GoToThief",
-	"🏃 Ir até o ladrão",
-	CORES.Perigo,
-	8 + BTN_ALTURA + 4
-)
+local teleportButton = botaoLargo("GoToThief", "🏃 Ir até o ladrão", CORES.Perigo, 40)
 
 -- =========================================================
 --                  PAINEL (CONFIG / LOG / STATS)
 -- =========================================================
 
--- O painel é uma janela própria (fora do card), pra não sair
--- da tela quando o card é arrastado e pra caber no celular.
-
-local function tela()
-	local camera = Workspace.CurrentCamera
-	return camera and camera.ViewportSize or Vector2.new(1280, 720)
-end
-
-local PAINEL_W, PAINEL_H
-
-local function medirPainel()
-	local vp = tela()
-	PAINEL_W = math.floor(math.min(300, vp.X * 0.9))
-	PAINEL_H = math.floor(math.min(EH_MOBILE and 260 or 300, vp.Y * 0.7))
-end
-
-medirPainel()
-
 local painel = novo("Frame", {
 	Name = "Painel",
 	AnchorPoint = Vector2.new(0.5, 0.5),
-	Position = UDim2.fromScale(0.5, 0.5),
-	Size = UDim2.fromOffset(PAINEL_W, PAINEL_H),
+	Position = UDim2.new(0.5, 0, 0.5, 0),
+	Size = UDim2.fromOffset(268, 250),
 	BackgroundColor3 = CORES.Fundo,
 	BackgroundTransparency = 0.08,
 	BorderSizePixel = 0,
-	Active = true,
 	Visible = false,
 	ZIndex = 30,
 }, gui)
@@ -1314,51 +1257,57 @@ novo("UIPadding", {
 	PaddingRight = UDim.new(0, 10),
 }, painel)
 
--- Barra de título: arrasta a janela e fecha.
-local painelBarra = novo("TextButton", {
-	Name = "Barra",
-	Size = UDim2.new(1, 0, 0, 20),
-	BackgroundTransparency = 1,
-	AutoButtonColor = false,
-	Text = "",
-	ZIndex = 31,
-}, painel)
+-- Arrastar painel de configurações independente
+do
+	local arrastando = false
+	local inicioMouse
+	local inicioPos
+
+	painel.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			arrastando = true
+			inicioMouse = input.Position
+			inicioPos = painel.AbsolutePosition
+			painel.AnchorPoint = Vector2.new(0, 0)
+			painel.Position = UDim2.fromOffset(inicioPos.X, inicioPos.Y)
+		end
+	end)
+
+	jan:add(UserInputService.InputChanged:Connect(function(input)
+		if not arrastando then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+		local delta = input.Position - inicioMouse
+		painel.Position = UDim2.fromOffset(
+			math.floor(inicioPos.X + delta.X),
+			math.floor(inicioPos.Y + delta.Y)
+		)
+	end))
+
+	jan:add(UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			arrastando = false
+		end
+	end))
+end
 
 local painelTitulo = novo("TextLabel", {
-	Size = UDim2.new(1, -26, 1, 0),
+	Size = UDim2.new(1, 0, 0, 16),
 	BackgroundTransparency = 1,
 	Font = Enum.Font.GothamBlack,
-	TextSize = EH_MOBILE and 14 or 12,
+	TextSize = 12,
 	TextColor3 = CORES.Texto,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	Text = "SamMods • Painel",
-	ZIndex = 32,
-}, painelBarra)
+	ZIndex = 31,
+}, painel)
 
 Rainbow.add(painelTitulo, function(cor)
 	painelTitulo.TextColor3 = cor
 end)
 
-local painelFechar = novo("TextButton", {
-	Name = "Fechar",
-	AnchorPoint = Vector2.new(1, 0.5),
-	Position = UDim2.new(1, 0, 0.5, 0),
-	Size = UDim2.fromOffset(22, 22),
-	BackgroundColor3 = CORES.Fundo2,
-	BackgroundTransparency = 0.2,
-	AutoButtonColor = false,
-	Font = Enum.Font.GothamBlack,
-	TextSize = 13,
-	Text = "✕",
-	TextColor3 = CORES.Texto,
-	ZIndex = 32,
-}, painelBarra)
-
-cantos(painelFechar, 6)
-
 local abasFrame = novo("Frame", {
-	Position = UDim2.new(0, 0, 0, 24),
-	Size = UDim2.new(1, 0, 0, EH_MOBILE and 28 or 22),
+	Position = UDim2.new(0, 0, 0, 20),
+	Size = UDim2.new(1, 0, 0, 22),
 	BackgroundTransparency = 1,
 	ZIndex = 31,
 }, painel)
@@ -1393,12 +1342,12 @@ local function criarAba(nome, rotulo, ordem)
 
 	local botao = novo("TextButton", {
 		Name = "Aba_" .. nome,
-		Size = UDim2.new(1 / 3, -3, 1, 0),
+		Size = UDim2.fromOffset(80, 22),
 		BackgroundColor3 = CORES.Fundo2,
 		BackgroundTransparency = 0.55,
 		AutoButtonColor = false,
 		Font = Enum.Font.GothamBold,
-		TextSize = EH_MOBILE and 12 or 11,
+		TextSize = 11,
 		Text = rotulo,
 		TextColor3 = CORES.TextoFraco,
 		LayoutOrder = ordem,
@@ -1409,11 +1358,11 @@ local function criarAba(nome, rotulo, ordem)
 
 	local conteudo = novo("ScrollingFrame", {
 		Name = "Conteudo_" .. nome,
-		Position = UDim2.new(0, 0, 0, EH_MOBILE and 58 or 52),
-		Size = UDim2.new(1, 0, 1, EH_MOBILE and -58 or -52),
+		Position = UDim2.new(0, 0, 0, 48),
+		Size = UDim2.new(1, 0, 1, -48),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		ScrollBarThickness = EH_MOBILE and 5 or 3,
+		ScrollBarThickness = 3,
 		ScrollBarImageColor3 = CORES.Base,
 		CanvasSize = UDim2.new(0, 0, 0, 0),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
@@ -1447,7 +1396,7 @@ local function linhaToggle(pai, chave, rotulo, ordem, aoMudar)
 
 	local linha = novo("TextButton", {
 		Name = "Toggle_" .. chave,
-		Size = UDim2.new(1, -6, 0, EH_MOBILE and 32 or 26),
+		Size = UDim2.new(1, -6, 0, 26),
 		BackgroundColor3 = CORES.Fundo2,
 		BackgroundTransparency = 0.35,
 		AutoButtonColor = false,
@@ -1463,7 +1412,7 @@ local function linhaToggle(pai, chave, rotulo, ordem, aoMudar)
 		Size = UDim2.new(1, -54, 1, 0),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamMedium,
-		TextSize = EH_MOBILE and 12 or 11,
+		TextSize = 11,
 		TextColor3 = CORES.Texto,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Text = rotulo,
@@ -1520,10 +1469,10 @@ end
 local function linhaTexto(pai, rotulo, ordem)
 
 	local label = novo("TextLabel", {
-		Size = UDim2.new(1, -6, 0, EH_MOBILE and 22 or 20),
+		Size = UDim2.new(1, -6, 0, 20),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamMedium,
-		TextSize = EH_MOBILE and 12 or 11,
+		TextSize = 11,
 		TextColor3 = CORES.TextoFraco,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Text = rotulo,
@@ -1538,7 +1487,7 @@ end
 local function linhaInput(pai, rotulo, valorInicial, ordem, aoConfirmar)
 
 	local linha = novo("Frame", {
-		Size = UDim2.new(1, -6, 0, EH_MOBILE and 32 or 26),
+		Size = UDim2.new(1, -6, 0, 26),
 		BackgroundColor3 = CORES.Fundo2,
 		BackgroundTransparency = 0.35,
 		BorderSizePixel = 0,
@@ -1553,7 +1502,7 @@ local function linhaInput(pai, rotulo, valorInicial, ordem, aoConfirmar)
 		Size = UDim2.new(0.55, -8, 1, 0),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamMedium,
-		TextSize = EH_MOBILE and 12 or 11,
+		TextSize = 11,
 		TextColor3 = CORES.Texto,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Text = rotulo,
@@ -1563,11 +1512,11 @@ local function linhaInput(pai, rotulo, valorInicial, ordem, aoConfirmar)
 	local caixa = novo("TextBox", {
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, -6, 0.5, 0),
-		Size = UDim2.new(0.4, 0, 0, EH_MOBILE and 24 or 18),
+		Size = UDim2.new(0.4, 0, 0, 18),
 		BackgroundColor3 = CORES.Fundo,
 		BorderSizePixel = 0,
 		Font = Enum.Font.GothamBold,
-		TextSize = EH_MOBILE and 12 or 11,
+		TextSize = 11,
 		TextColor3 = CORES.Texto,
 		Text = tostring(valorInicial),
 		ClearTextOnFocus = false,
@@ -2737,41 +2686,8 @@ local metaValorAvisada = false
 local function aplicarVisibilidade()
 	container.Visible = not modoDiscreto
 	notifyPilha.Visible = not modoDiscreto
-	btnRestaurar.Visible = modoDiscreto
-	if modoDiscreto then
-		painel.Visible = false
-	end
 	if setaLadrao then
 		setaLadrao.Visible = setaLadrao.Visible and not modoDiscreto
-	end
-end
-
--- Girou o celular / mudou a janela: refaz o tamanho do painel
--- e garante que o card não ficou fora da tela.
-do
-	local camera = Workspace.CurrentCamera
-
-	local function ajustar()
-
-		medirPainel()
-
-		if painel.Visible then
-			painel.Size = UDim2.fromOffset(PAINEL_W, PAINEL_H)
-		end
-
-		local vp = tela()
-		local pos = container.AbsolutePosition
-		local tam = container.AbsoluteSize
-
-		if pos.X + tam.X > vp.X or pos.Y + tam.Y > vp.Y or pos.X < 0 or pos.Y < 0 then
-			container.AnchorPoint = Vector2.new(1, 0)
-			container.Position = UDim2.new(1, -16, 0, 92)
-		end
-
-	end
-
-	if camera then
-		jan:add(camera:GetPropertyChangedSignal("ViewportSize"):Connect(ajustar))
 	end
 end
 
@@ -2896,6 +2812,384 @@ atualizarLogUI()
 selecionarAba("Config")
 
 -- =========================================================
+--               PAINEL DE LISTA DE JOGADORES
+-- =========================================================
+
+local jogadorSelecionado = nil
+local grudarJogadorAtivo = false
+local grudarJogadorConn = nil
+
+local function pararGrudarJogador()
+	if grudarJogadorConn then
+		grudarJogadorConn:Disconnect()
+		grudarJogadorConn = nil
+	end
+	grudarJogadorAtivo = false
+end
+
+local painelPlayers = novo("Frame", {
+	Name = "PainelPlayers",
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.new(0.35, 0, 0.5, 0),
+	Size = UDim2.fromOffset(260, 300),
+	BackgroundColor3 = CORES.Fundo,
+	BackgroundTransparency = 0.08,
+	BorderSizePixel = 0,
+	Visible = false,
+	ZIndex = 30,
+}, gui)
+
+cantos(painelPlayers, 12)
+contorno(painelPlayers, CORES.Base, 1.2, 0.6)
+
+novo("UIPadding", {
+	PaddingTop = UDim.new(0, 8),
+	PaddingBottom = UDim.new(0, 8),
+	PaddingLeft = UDim.new(0, 10),
+	PaddingRight = UDim.new(0, 10),
+}, painelPlayers)
+
+local playersTitulo = novo("TextLabel", {
+	Size = UDim2.new(1, 0, 0, 16),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBlack,
+	TextSize = 12,
+	TextColor3 = CORES.Texto,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "👥 Jogadores no Servidor",
+	ZIndex = 31,
+}, painelPlayers)
+
+Rainbow.add(playersTitulo, function(cor)
+	playersTitulo.TextColor3 = cor
+end)
+
+-- Botões de ação no topo do painel
+local acoesFrame = novo("Frame", {
+	Position = UDim2.new(0, 0, 0, 22),
+	Size = UDim2.new(1, 0, 0, 28),
+	BackgroundTransparency = 1,
+	ZIndex = 31,
+}, painelPlayers)
+
+novo("UIListLayout", {
+	FillDirection = Enum.FillDirection.Horizontal,
+	Padding = UDim.new(0, 4),
+	SortOrder = Enum.SortOrder.LayoutOrder,
+}, acoesFrame)
+
+local function botaoAcao(texto, cor, ordem)
+	local b = novo("TextButton", {
+		Size = UDim2.fromOffset(72, 28),
+		BackgroundColor3 = cor,
+		BackgroundTransparency = 0.15,
+		AutoButtonColor = false,
+		Font = Enum.Font.GothamBold,
+		TextSize = 10,
+		TextColor3 = CORES.Texto,
+		Text = texto,
+		LayoutOrder = ordem,
+		ZIndex = 32,
+	}, acoesFrame)
+	cantos(b, 6)
+	b.MouseEnter:Connect(function()
+		tween(b, { BackgroundTransparency = 0 }, 0.15)
+	end)
+	b.MouseLeave:Connect(function()
+		tween(b, { BackgroundTransparency = 0.15 }, 0.15)
+	end)
+	return b
+end
+
+local btnGrudarPlayer = botaoAcao("🔒 Grudar", CORES.Fundo2, 1)
+local btnTpPlayer = botaoAcao("🏃 TP", CORES.Perigo, 2)
+local btnCameraPlayer = botaoAcao("📷 Câmera", Color3.fromRGB(50, 90, 170), 3)
+
+-- Lista scrollable de jogadores
+local playersLista = novo("ScrollingFrame", {
+	Position = UDim2.new(0, 0, 0, 56),
+	Size = UDim2.new(1, 0, 1, -56),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	ScrollBarThickness = 3,
+	ScrollBarImageColor3 = CORES.Base,
+	CanvasSize = UDim2.new(0, 0, 0, 0),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	ZIndex = 31,
+}, painelPlayers)
+
+novo("UIListLayout", {
+	Padding = UDim.new(0, 3),
+	SortOrder = Enum.SortOrder.LayoutOrder,
+}, playersLista)
+
+-- Arrastar painel de jogadores independente
+do
+	local arrastando = false
+	local inicioMouse
+	local inicioPos
+
+	painelPlayers.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			arrastando = true
+			inicioMouse = input.Position
+			inicioPos = painelPlayers.AbsolutePosition
+			painelPlayers.AnchorPoint = Vector2.new(0, 0)
+			painelPlayers.Position = UDim2.fromOffset(inicioPos.X, inicioPos.Y)
+		end
+	end)
+
+	jan:add(UserInputService.InputChanged:Connect(function(input)
+		if not arrastando then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+		local delta = input.Position - inicioMouse
+		painelPlayers.Position = UDim2.fromOffset(
+			math.floor(inicioPos.X + delta.X),
+			math.floor(inicioPos.Y + delta.Y)
+		)
+	end))
+
+	jan:add(UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			arrastando = false
+		end
+	end))
+end
+
+-- Funções de ação sobre o jogador selecionado
+
+local function rootDeJogador(jogador)
+	local personagem = jogador and jogador.Character
+	return personagem and personagem:FindFirstChild("HumanoidRootPart")
+end
+
+local function irAteJogadorSelecionado()
+	local meu = meuRoot()
+	local alvo = rootDeJogador(jogadorSelecionado)
+	if meu and alvo then
+		meu.CFrame = alvo.CFrame * CFrame.new(0, 0, 4)
+		return true
+	end
+	return false
+end
+
+local function grudarEmJogadorSelecionado()
+	pararGrudarJogador()
+	grudarJogadorAtivo = true
+	grudarJogadorConn = jan:add(RunService.Heartbeat:Connect(function()
+		local meu = meuRoot()
+		local alvo = rootDeJogador(jogadorSelecionado)
+		if meu and alvo then
+			meu.CFrame = alvo.CFrame * CFrame.new(0, 0, 4)
+		else
+			pararGrudarJogador()
+			btnGrudarPlayer.Text = "🔒 Grudar"
+			btnGrudarPlayer.BackgroundColor3 = CORES.Fundo2
+		end
+	end))
+end
+
+local function cameraParaJogadorSelecionado()
+	local alvo = rootDeJogador(jogadorSelecionado)
+	if not alvo then return end
+	local camera = Workspace.CurrentCamera
+	camera.CameraType = Enum.CameraType.Scriptable
+	camera.CFrame = CFrame.new(alvo.Position + Vector3.new(0, 5, 10), alvo.Position)
+	task.wait(0.08)
+	camera.CameraType = Enum.CameraType.Custom
+end
+
+-- Itens da lista para highlight de seleção
+local itensPlayer = {}
+
+local function atualizarListaPlayers()
+	for _, filho in ipairs(playersLista:GetChildren()) do
+		if filho:IsA("GuiObject") then filho:Destroy() end
+	end
+	itensPlayer = {}
+	jogadorSelecionado = nil
+	pararGrudarJogador()
+	btnGrudarPlayer.Text = "🔒 Grudar"
+	btnGrudarPlayer.BackgroundColor3 = CORES.Fundo2
+
+	local jogadores = Players:GetPlayers()
+	table.sort(jogadores, function(a, b)
+		return a.Name:lower() < b.Name:lower()
+	end)
+
+	local ordem = 0
+	for _, jogador in ipairs(jogadores) do
+		if jogador == LocalPlayer then continue end
+		ordem += 1
+
+		local item = novo("TextButton", {
+			Name = "PlayerItem_" .. jogador.Name,
+			Size = UDim2.new(1, -4, 0, 48),
+			BackgroundColor3 = CORES.Fundo2,
+			BackgroundTransparency = 0.35,
+			AutoButtonColor = false,
+			Text = "",
+			LayoutOrder = ordem,
+			ZIndex = 32,
+		}, playersLista)
+
+		cantos(item, 7)
+		local itemStroke = contorno(item, CORES.Base, 0, 1)
+
+		-- Avatar
+		local avatar = novo("ImageLabel", {
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 5, 0.5, 0),
+			Size = UDim2.fromOffset(36, 36),
+			BackgroundColor3 = CORES.Fundo,
+			Image = ("rbxthumb://type=AvatarHeadShot&id=%d&w=100&h=100"):format(jogador.UserId),
+			ZIndex = 33,
+		}, item)
+		cantos(avatar, 99)
+
+		-- Nome principal (grande)
+		novo("TextLabel", {
+			Position = UDim2.new(0, 47, 0, 5),
+			Size = UDim2.new(1, -55, 0, 21),
+			BackgroundTransparency = 1,
+			Font = Enum.Font.GothamBlack,
+			TextSize = 13,
+			TextColor3 = CORES.Texto,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Text = jogador.Name,
+			ZIndex = 33,
+		}, item)
+
+		-- DisplayName (menor, abaixo)
+		local displayName = (jogador.DisplayName ~= jogador.Name)
+			and jogador.DisplayName
+			or ("@" .. jogador.Name)
+
+		novo("TextLabel", {
+			Position = UDim2.new(0, 47, 0, 27),
+			Size = UDim2.new(1, -55, 0, 15),
+			BackgroundTransparency = 1,
+			Font = Enum.Font.Gotham,
+			TextSize = 10,
+			TextColor3 = CORES.TextoFraco,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Text = displayName,
+			ZIndex = 33,
+		}, item)
+
+		itensPlayer[jogador.UserId] = { frame = item, stroke = itemStroke }
+
+		item.MouseButton1Click:Connect(function()
+			-- Desselecionar anterior
+			if jogadorSelecionado then
+				local ant = itensPlayer[jogadorSelecionado.UserId]
+				if ant then
+					tween(ant.frame, { BackgroundTransparency = 0.35 }, 0.15)
+					ant.stroke.Thickness = 0
+				end
+			end
+
+			-- Selecionar novo
+			jogadorSelecionado = jogador
+			tween(item, { BackgroundTransparency = 0.1 }, 0.15)
+			itemStroke.Thickness = 1.2
+
+			-- Se estava grudado, parar e resetar botão
+			if grudarJogadorAtivo then
+				pararGrudarJogador()
+				btnGrudarPlayer.Text = "🔒 Grudar"
+				btnGrudarPlayer.BackgroundColor3 = CORES.Fundo2
+			end
+		end)
+
+		item.MouseEnter:Connect(function()
+			if jogadorSelecionado ~= jogador then
+				tween(item, { BackgroundTransparency = 0.2 }, 0.1)
+			end
+		end)
+		item.MouseLeave:Connect(function()
+			if jogadorSelecionado ~= jogador then
+				tween(item, { BackgroundTransparency = 0.35 }, 0.1)
+			end
+		end)
+	end
+
+	if ordem == 0 then
+		novo("TextLabel", {
+			Size = UDim2.new(1, -6, 0, 30),
+			BackgroundTransparency = 1,
+			Font = Enum.Font.GothamMedium,
+			TextSize = 11,
+			TextColor3 = CORES.TextoFraco,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Text = "Nenhum outro jogador no servidor.",
+			LayoutOrder = 1,
+			ZIndex = 32,
+		}, playersLista)
+	end
+end
+
+local function avisoSemSelecao()
+	notificar({
+		titulo = "👥 Selecione um jogador",
+		texto = "Clique em um jogador da lista primeiro.",
+		cor = CORES.Spike,
+		duracao = 3,
+		som = false,
+	})
+end
+
+btnGrudarPlayer.MouseButton1Click:Connect(function()
+	if not jogadorSelecionado then
+		avisoSemSelecao()
+		return
+	end
+	grudarJogadorAtivo = not grudarJogadorAtivo
+	if grudarJogadorAtivo then
+		grudarEmJogadorSelecionado()
+		btnGrudarPlayer.Text = "🔓 Soltar"
+		btnGrudarPlayer.BackgroundColor3 = CORES.Perigo
+	else
+		pararGrudarJogador()
+		btnGrudarPlayer.Text = "🔒 Grudar"
+		btnGrudarPlayer.BackgroundColor3 = CORES.Fundo2
+	end
+end)
+
+btnTpPlayer.MouseButton1Click:Connect(function()
+	if not jogadorSelecionado then avisoSemSelecao() return end
+	irAteJogadorSelecionado()
+end)
+
+btnCameraPlayer.MouseButton1Click:Connect(function()
+	if not jogadorSelecionado then avisoSemSelecao() return end
+	cameraParaJogadorSelecionado()
+end)
+
+local function alternarPainelPlayers()
+	painelPlayers.Visible = not painelPlayers.Visible
+	if painelPlayers.Visible then
+		atualizarListaPlayers()
+		painelPlayers.Size = UDim2.fromOffset(260, 0)
+		tween(painelPlayers, { Size = UDim2.fromOffset(260, 300) }, 0.2, Enum.EasingStyle.Back)
+	else
+		pararGrudarJogador()
+		btnGrudarPlayer.Text = "🔒 Grudar"
+		btnGrudarPlayer.BackgroundColor3 = CORES.Fundo2
+	end
+end
+
+btnPlayers.MouseButton1Click:Connect(alternarPainelPlayers)
+
+jan:add(Players.PlayerAdded:Connect(function()
+	if painelPlayers.Visible then
+		atualizarListaPlayers()
+	end
+end))
+
+-- =========================================================
 --                   AÇÕES DOS BOTÕES
 -- =========================================================
 
@@ -2904,75 +3198,13 @@ local function alternarPainel()
 	painel.Visible = not painel.Visible
 
 	if painel.Visible then
-		medirPainel()
-		painel.Size = UDim2.fromOffset(PAINEL_W, 0)
-		tween(
-			painel,
-			{ Size = UDim2.fromOffset(PAINEL_W, PAINEL_H) },
-			0.2,
-			Enum.EasingStyle.Back
-		)
+		painel.Size = UDim2.fromOffset(268, 0)
+		tween(painel, { Size = UDim2.fromOffset(268, 250) }, 0.2, Enum.EasingStyle.Back)
 	end
 
 end
 
 btnConfig.MouseButton1Click:Connect(alternarPainel)
-
-painelFechar.MouseButton1Click:Connect(function()
-	painel.Visible = false
-end)
-
--- Arrastar a janela do painel pela barra de título.
-do
-	local arrastando = false
-	local inicio
-	local inicioPos
-
-	painelBarra.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-			arrastando = true
-			inicio = input.Position
-			inicioPos = painel.AbsolutePosition
-		end
-	end)
-
-	jan:add(UserInputService.InputChanged:Connect(function(input)
-
-		if not arrastando then
-			return
-		end
-
-		if input.UserInputType ~= Enum.UserInputType.MouseMovement
-			and input.UserInputType ~= Enum.UserInputType.Touch then
-			return
-		end
-
-		local vp = tela()
-		local delta = input.Position - inicio
-		local x = math.clamp(inicioPos.X + delta.X, 0, math.max(0, vp.X - painel.AbsoluteSize.X))
-		local y = math.clamp(inicioPos.Y + delta.Y, 0, math.max(0, vp.Y - painel.AbsoluteSize.Y))
-
-		painel.AnchorPoint = Vector2.new(0, 0)
-		painel.Position = UDim2.fromOffset(math.floor(x), math.floor(y))
-
-	end))
-
-	jan:add(UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-			arrastando = false
-		end
-	end))
-end
-
-local function alternarDiscreto()
-	modoDiscreto = not modoDiscreto
-	aplicarVisibilidade()
-end
-
-btnOlho.MouseButton1Click:Connect(alternarDiscreto)
-btnRestaurar.MouseButton1Click:Connect(alternarDiscreto)
 
 btnSom.MouseButton1Click:Connect(function()
 
@@ -2986,6 +3218,30 @@ btnSom.MouseButton1Click:Connect(function()
 		end
 	else
 		AlertSound:Stop()
+	end
+
+end)
+
+btnChat.MouseButton1Click:Connect(function()
+
+	local enviou, faltam = tentarEnviarMensagem()
+
+	if enviou then
+		notificar({
+			titulo = "💬 Mensagem enviada",
+			texto = CONFIG.mensagemMaximo,
+			cor = CORES.Ok,
+			duracao = 3,
+			som = false,
+		})
+	else
+		notificar({
+			titulo = "⏳ Aguarde",
+			texto = ("Cooldown do chat: faltam %ds"):format(faltam),
+			cor = CORES.Spike,
+			duracao = 3,
+			som = false,
+		})
 	end
 
 end)
@@ -3233,6 +3489,15 @@ jan:add(Players.PlayerRemoving:Connect(function(jogador)
 	if jogador == ladraoJogador then
 		pararAlerta()
 		limparEsp()
+	end
+	if jogador == jogadorSelecionado then
+		jogadorSelecionado = nil
+		pararGrudarJogador()
+		btnGrudarPlayer.Text = "🔒 Grudar"
+		btnGrudarPlayer.BackgroundColor3 = CORES.Fundo2
+	end
+	if painelPlayers.Visible then
+		atualizarListaPlayers()
 	end
 end))
 
