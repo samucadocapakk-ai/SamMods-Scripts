@@ -808,23 +808,11 @@ chatNotifFrame.Name = "ChatNotifyFrame"
 chatNotifFrame.AnchorPoint = Vector2.new(0.5, 0)
 chatNotifFrame.Position = UDim2.new(0.5, 0, 0, -90)
 chatNotifFrame.Size = UDim2.fromOffset(320, 66)
-chatNotifFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-chatNotifFrame.BackgroundTransparency = 0
+chatNotifFrame.BackgroundTransparency = 1
 chatNotifFrame.BorderSizePixel = 0
 chatNotifFrame.Visible = false
 chatNotifFrame.ZIndex = 200
 chatNotifFrame.Parent = chatNotifyGui
-
-local chatNotifCorner = Instance.new("UICorner")
-chatNotifCorner.CornerRadius = UDim.new(0, 18)
-chatNotifCorner.Parent = chatNotifFrame
-
-local chatNotifPadding = Instance.new("UIPadding")
-chatNotifPadding.PaddingTop = UDim.new(0, 10)
-chatNotifPadding.PaddingBottom = UDim.new(0, 10)
-chatNotifPadding.PaddingLeft = UDim.new(0, 10)
-chatNotifPadding.PaddingRight = UDim.new(0, 12)
-chatNotifPadding.Parent = chatNotifFrame
 
 local chatNotifPhoto = Instance.new("ImageLabel")
 chatNotifPhoto.AnchorPoint = Vector2.new(0, 0.5)
@@ -837,6 +825,24 @@ local chatNotifPhotoCorner = Instance.new("UICorner")
 chatNotifPhotoCorner.CornerRadius = UDim.new(0.5, 0)
 chatNotifPhotoCorner.Parent = chatNotifPhoto
 
+local chatNotifPhotoStroke = Instance.new("UIStroke")
+chatNotifPhotoStroke.Thickness = 1.5
+chatNotifPhotoStroke.Parent = chatNotifPhoto
+
+task.spawn(function()
+
+	local hue = 0
+
+	while true do
+
+		hue = (hue + 0.01) % 1
+		chatNotifPhotoStroke.Color = Color3.fromHSV(hue, 1, 1)
+		task.wait(0.03)
+
+	end
+
+end)
+
 local chatNotifName = Instance.new("TextLabel")
 chatNotifName.Position = UDim2.new(0, 58, 0, 0)
 chatNotifName.Size = UDim2.new(1, -58, 0, 20)
@@ -846,6 +852,11 @@ chatNotifName.TextSize = 14
 chatNotifName.TextXAlignment = Enum.TextXAlignment.Left
 chatNotifName.TextColor3 = Color3.fromRGB(255, 255, 255)
 chatNotifName.Parent = chatNotifFrame
+
+local chatNotifNameStroke = Instance.new("UIStroke")
+chatNotifNameStroke.Color = Color3.fromRGB(0, 0, 0)
+chatNotifNameStroke.Thickness = 2
+chatNotifNameStroke.Parent = chatNotifName
 
 local chatNotifMsg = Instance.new("TextLabel")
 chatNotifMsg.Position = UDim2.new(0, 58, 0, 22)
@@ -858,6 +869,11 @@ chatNotifMsg.TextXAlignment = Enum.TextXAlignment.Left
 chatNotifMsg.TextYAlignment = Enum.TextYAlignment.Top
 chatNotifMsg.TextColor3 = Color3.fromRGB(255, 255, 255)
 chatNotifMsg.Parent = chatNotifFrame
+
+local chatNotifMsgStroke = Instance.new("UIStroke")
+chatNotifMsgStroke.Color = Color3.fromRGB(0, 0, 0)
+chatNotifMsgStroke.Thickness = 2
+chatNotifMsgStroke.Parent = chatNotifMsg
 
 local chatNotifToken = 0
 
@@ -948,14 +964,65 @@ screenGui.DisplayOrder = 10
 screenGui.Parent = PlayerGui
 
 -- =========================================================
---            BOTÃO DE TELEPORTE ATÉ O LADRÃO
+--     CADEADO (TRAVAR NO LADRÃO) + TELEPORTE ATÉ ELE
 -- =========================================================
--- Só fica visível enquanto tem alguém te roubando agora.
+-- Só ficam visíveis enquanto tem alguém te roubando agora.
+-- Cadeado destravado: clicar no botão faz um teleporte único.
+-- Cadeado travado: clicar no botão gruda em cima do ladrão
+-- continuamente, sem precisar ficar clicando; destravar o
+-- cadeado solta na hora.
+
+local travadoNoLadrao = false
+local glueConnection = nil
+
+local lockButton = Instance.new("TextButton")
+lockButton.Name = "LockOnThiefButton"
+lockButton.AnchorPoint = Vector2.new(1, 0)
+lockButton.Position = UDim2.new(1, -16, 0, 154)
+lockButton.Size = UDim2.fromOffset(150, 30)
+lockButton.BackgroundColor3 = Color3.fromRGB(40, 42, 48)
+lockButton.BackgroundTransparency = 0.1
+lockButton.BorderSizePixel = 0
+lockButton.AutoButtonColor = false
+lockButton.Font = Enum.Font.GothamBlack
+lockButton.TextSize = 13
+lockButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+lockButton.Text = "🔓 Travar no ladrão"
+lockButton.Visible = false
+lockButton.ZIndex = 50
+lockButton.Parent = screenGui
+
+local lockButtonCorner = Instance.new("UICorner")
+lockButtonCorner.CornerRadius = UDim.new(0, 10)
+lockButtonCorner.Parent = lockButton
+
+lockButton.MouseButton1Click:Connect(function()
+
+	travadoNoLadrao = not travadoNoLadrao
+
+	if travadoNoLadrao then
+
+		lockButton.Text = "🔒 Travado no ladrão"
+		lockButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+
+	else
+
+		lockButton.Text = "🔓 Travar no ladrão"
+		lockButton.BackgroundColor3 = Color3.fromRGB(40, 42, 48)
+
+		if glueConnection then
+			glueConnection:Disconnect()
+			glueConnection = nil
+		end
+
+	end
+
+end)
 
 local teleportButton = Instance.new("TextButton")
 teleportButton.Name = "TeleportToThiefButton"
 teleportButton.AnchorPoint = Vector2.new(1, 0)
-teleportButton.Position = UDim2.new(1, -16, 0, 154)
+teleportButton.Position = UDim2.new(1, -16, 0, 192)
 teleportButton.Size = UDim2.fromOffset(150, 30)
 teleportButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
 teleportButton.BackgroundTransparency = 0.1
@@ -975,12 +1042,37 @@ teleportButtonCorner.Parent = teleportButton
 
 teleportButton.MouseButton1Click:Connect(function()
 
-	local meuCharacter = LocalPlayer.Character
-	local meuRoot = meuCharacter and meuCharacter:FindFirstChild("HumanoidRootPart")
-	local alvoRoot = hackerEspAlvo and hackerEspAlvo:FindFirstChild("HumanoidRootPart")
+	if travadoNoLadrao then
 
-	if meuRoot and alvoRoot then
-		meuRoot.CFrame = alvoRoot.CFrame * CFrame.new(0, 0, 4)
+		if glueConnection then
+			return
+		end
+
+		glueConnection = RunService.Heartbeat:Connect(function()
+
+			local meuCharacter = LocalPlayer.Character
+			local meuRoot = meuCharacter and meuCharacter:FindFirstChild("HumanoidRootPart")
+			local alvoRoot = hackerEspAlvo and hackerEspAlvo:FindFirstChild("HumanoidRootPart")
+
+			if meuRoot and alvoRoot then
+				meuRoot.CFrame = alvoRoot.CFrame * CFrame.new(0, 0, 4)
+			elseif glueConnection then
+				glueConnection:Disconnect()
+				glueConnection = nil
+			end
+
+		end)
+
+	else
+
+		local meuCharacter = LocalPlayer.Character
+		local meuRoot = meuCharacter and meuCharacter:FindFirstChild("HumanoidRootPart")
+		local alvoRoot = hackerEspAlvo and hackerEspAlvo:FindFirstChild("HumanoidRootPart")
+
+		if meuRoot and alvoRoot then
+			meuRoot.CFrame = alvoRoot.CFrame * CFrame.new(0, 0, 4)
+		end
+
 	end
 
 end)
@@ -2470,7 +2562,13 @@ local function limparHackerEsp()
 		hackerEspUpdateConn = nil
 	end
 
+	if glueConnection then
+		glueConnection:Disconnect()
+		glueConnection = nil
+	end
+
 	teleportButton.Visible = false
+	lockButton.Visible = false
 	hackerEspAlvo = nil
 
 end
@@ -2500,6 +2598,7 @@ local function mostrarHackerEsp(userId)
 	local meuToken = hackerEspToken
 	hackerEspAlvo = personagem
 	teleportButton.Visible = true
+	lockButton.Visible = true
 
 	local highlight = Instance.new("Highlight")
 	highlight.FillTransparency = 0.75
