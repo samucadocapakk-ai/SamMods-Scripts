@@ -1,4 +1,52 @@
+--[[
+	=========================================================
+	  SamMods — TokenPriceWatcher v2
+	  Local: StarterPlayerScripts (LocalScript)
+	=========================================================
 
+	O QUE MUDOU EM RELAÇÃO À v1
+	---------------------------
+	CORREÇÕES
+	  • Tabela de unidades unificada (o formatNumber antigo
+	    repetia "No"/"Oc" em duas faixas e não batia com a
+	    tabela de leitura, dando valor errado acima de 1e57).
+	  • Leitura de tokens aceita sufixo em minúsculo e texto
+	    com prefixo ("Tokens: 2.5t").
+	  • Um único loop de rainbow para tudo (antes era um loop
+	    por elemento + um por jogador na sala: com 20 jogadores
+	    eram 20+ loops a 33fps só para trocar cor de contorno).
+	  • Todas as conexões/loops são registrados e desligados
+	    quando o script morre (antes vazavam).
+	  • Pulsação do modo máximo usa UIScale em vez de mudar
+	    Size, então não briga mais com o hover nem desalinha
+	    os botões.
+	  • O botão 📢 fazia outra coisa (ligava/desligava o som).
+	    Agora cada botão faz o que o ícone diz.
+	  • Limpeza remove TODAS as GUIs do mod ao recarregar.
+
+	NOVIDADES
+	  • Painel arrastável (segure e arraste o card) com a
+	    posição lembrada.
+	  • Painel de abas: Config / Roubos / Stats (botão ⚙).
+	  • Config com liga-desliga de cada função.
+	  • Log de roubos (quem, quando, quantas vezes).
+	  • Stats da sessão: tokens ganhos, tokens/min, maior
+	    preço visto, roubos sofridos.
+	  • Mini gráfico do histórico de preço dentro do card.
+	  • Meta de tokens/valor com aviso quando bater.
+	  • Seta na borda da tela apontando pro ladrão quando ele
+	    está fora do campo de visão.
+	  • Auto-travar no ladrão (opcional).
+	  • Atalhos de teclado (F1 esconde tudo, F2 config,
+	    F3 som, F4 manda a mensagem, F5 vai até o ladrão).
+	  • Modo discreto (esconde tudo pra print/gravação).
+	  • Fila de notificações (não atropela mais uma na outra).
+
+	OBS: as configurações ficam salvas enquanto você estiver
+	no servidor. Script local não consegue gravar em disco,
+	então ao trocar de servidor volta ao padrão — mude os
+	valores em CONFIG abaixo se quiser outro padrão fixo.
+]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -3005,8 +3053,8 @@ selecionarAba("Config")
 -- =========================================================
 
 local FlingAtivo = false
-getgenv().OldPos = nil
-getgenv().FPDH = Workspace.FallenPartsDestroyHeight
+local OldPos = nil
+local FPDH = Workspace.FallenPartsDestroyHeight
 
 SkidFling = function(TargetPlayer)
 	if FlingAtivo then
@@ -3053,7 +3101,7 @@ SkidFling = function(TargetPlayer)
 
 	if Character and Humanoid and RootPart then
 		if RootPart.Velocity.Magnitude < 50 then
-			getgenv().OldPos = RootPart.CFrame
+			OldPos = RootPart.CFrame
 		end
 
 		if THumanoid and THumanoid.Sit then
@@ -3173,10 +3221,10 @@ SkidFling = function(TargetPlayer)
 		Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
 		Workspace.CurrentCamera.CameraSubject = Humanoid
 
-		if getgenv().OldPos then
+		if OldPos then
 			repeat
-				RootPart.CFrame = getgenv().OldPos * CFrame.new(0, .5, 0)
-				Character:SetPrimaryPartCFrame(getgenv().OldPos * CFrame.new(0, .5, 0))
+				RootPart.CFrame = OldPos * CFrame.new(0, .5, 0)
+				Character:SetPrimaryPartCFrame(OldPos * CFrame.new(0, .5, 0))
 				Humanoid:ChangeState("GettingUp")
 
 				for _, part in pairs(Character:GetChildren()) do
@@ -3186,9 +3234,9 @@ SkidFling = function(TargetPlayer)
 				end
 
 				task.wait()
-			until (RootPart.Position - getgenv().OldPos.p).Magnitude < 25
+			until (RootPart.Position - OldPos.p).Magnitude < 25
 
-			Workspace.FallenPartsDestroyHeight = getgenv().FPDH
+			Workspace.FallenPartsDestroyHeight = FPDH
 		end
 	else
 		FlingAtivo = false
