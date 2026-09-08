@@ -49,9 +49,9 @@ do
 	local INTRO_SUBTITULO = "MODS ROBLOX"
 
 	local INTRO_COR_FUNDO = Color3.fromRGB(5, 5, 8)
-	local INTRO_COR_PRINCIPAL = Color3.fromRGB(255, 30, 40)
-	local INTRO_COR_GLITCH_1 = Color3.fromRGB(255, 0, 60)
-	local INTRO_COR_GLITCH_2 = Color3.fromRGB(0, 200, 255)
+	local INTRO_COR_PRINCIPAL = Color3.fromRGB(255, 255, 255)
+	local INTRO_COR_GLITCH_1 = Color3.fromRGB(255, 255, 255)
+	local INTRO_COR_GLITCH_2 = Color3.fromRGB(20, 20, 20)
 
 	local introGui = Instance.new("ScreenGui")
 	introGui.Name = "SamModsIntroGui"
@@ -59,6 +59,35 @@ do
 	introGui.IgnoreGuiInset = true
 	introGui.DisplayOrder = 1000
 	introGui.Parent = PlayerGui
+
+	local skipButton = Instance.new("TextButton")
+	skipButton.Name = "SkipIntroButton"
+	skipButton.AnchorPoint = Vector2.new(1, 1)
+	skipButton.Position = UDim2.new(1, -20, 1, -20)
+	skipButton.Size = UDim2.fromOffset(110, 34)
+	skipButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	skipButton.BackgroundTransparency = 0.85
+	skipButton.BorderSizePixel = 0
+	skipButton.AutoButtonColor = false
+	skipButton.Font = Enum.Font.GothamBold
+	skipButton.TextSize = 13
+	skipButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	skipButton.Text = "Pular ⏭"
+	skipButton.ZIndex = 2000
+	skipButton.Parent = introGui
+
+	local skipButtonCorner = Instance.new("UICorner")
+	skipButtonCorner.CornerRadius = UDim.new(0, 8)
+	skipButtonCorner.Parent = skipButton
+
+	local skipButtonStroke = Instance.new("UIStroke")
+	skipButtonStroke.Color = Color3.fromRGB(255, 255, 255)
+	skipButtonStroke.Transparency = 0.6
+	skipButtonStroke.Parent = skipButton
+
+	skipButton.MouseButton1Click:Connect(function()
+		introGui:Destroy()
+	end)
 
 	local introBg = Instance.new("Frame")
 	introBg.Name = "Background"
@@ -398,6 +427,22 @@ do
 		introFlickerIn(introTitleMain, 0.9)
 		introTween(introTitleMain, {TextStrokeTransparency = 0.4}, 1.0):Play()
 
+		local introTitleScale = Instance.new("UIScale")
+		introTitleScale.Parent = introTitleContainer
+
+		task.spawn(function()
+
+			while introTitleContainer.Parent do
+
+				introTween(introTitleScale, {Scale = 1.04}, 0.9, Enum.EasingStyle.Sine):Play()
+				task.wait(0.9)
+				introTween(introTitleScale, {Scale = 1}, 0.9, Enum.EasingStyle.Sine):Play()
+				task.wait(0.9)
+
+			end
+
+		end)
+
 		task.wait(1.0)
 
 		introTween(introLinha, {Size = UDim2.new(0, 220, 0, 2)}, 0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out):Play()
@@ -696,7 +741,9 @@ end
 AlertSound.Volume = 3
 
 local alertaAtivo = false
+local alertaSomLigado = true
 local silenceButton = nil
+local hackerEspAlvo = nil
 
 local function iniciarAlerta()
 
@@ -706,12 +753,10 @@ local function iniciarAlerta()
 
 	alertaAtivo = true
 
-	AlertSound:Stop()
-	AlertSound.TimePosition = 0
-	AlertSound:Play()
-
-	if silenceButton then
-		silenceButton.Visible = true
+	if alertaSomLigado then
+		AlertSound:Stop()
+		AlertSound.TimePosition = 0
+		AlertSound:Play()
 	end
 
 	print("[HACK ALERT] ALERTA INICIADO")
@@ -729,10 +774,6 @@ local function pararAlerta()
 	AlertSound:Stop()
 	AlertSound.TimePosition = 0
 
-	if silenceButton then
-		silenceButton.Visible = false
-	end
-
 	print("[HACK ALERT] ALERTA ENCERRADO")
 
 end
@@ -749,6 +790,8 @@ local NOMES_ESPECIAIS = {
 	RECRUTAKG = true,
 	spammarixx107 = true,
 }
+
+local PREFIXO_CHAT_SCRIPT = "[SM] "
 
 local NotifySound = Instance.new("Sound")
 NotifySound.Name = "ChatNotifySound"
@@ -768,8 +811,8 @@ chatNotifFrame.Name = "ChatNotifyFrame"
 chatNotifFrame.AnchorPoint = Vector2.new(0.5, 0)
 chatNotifFrame.Position = UDim2.new(0.5, 0, 0, -90)
 chatNotifFrame.Size = UDim2.fromOffset(320, 66)
-chatNotifFrame.BackgroundColor3 = Color3.fromRGB(20, 22, 28)
-chatNotifFrame.BackgroundTransparency = 0.08
+chatNotifFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+chatNotifFrame.BackgroundTransparency = 0
 chatNotifFrame.BorderSizePixel = 0
 chatNotifFrame.Visible = false
 chatNotifFrame.ZIndex = 200
@@ -778,10 +821,6 @@ chatNotifFrame.Parent = chatNotifyGui
 local chatNotifCorner = Instance.new("UICorner")
 chatNotifCorner.CornerRadius = UDim.new(0, 18)
 chatNotifCorner.Parent = chatNotifFrame
-
-local chatNotifStroke = Instance.new("UIStroke")
-chatNotifStroke.Thickness = 2.5
-chatNotifStroke.Parent = chatNotifFrame
 
 local chatNotifPadding = Instance.new("UIPadding")
 chatNotifPadding.PaddingTop = UDim.new(0, 10)
@@ -820,22 +859,8 @@ chatNotifMsg.TextSize = 13
 chatNotifMsg.TextWrapped = true
 chatNotifMsg.TextXAlignment = Enum.TextXAlignment.Left
 chatNotifMsg.TextYAlignment = Enum.TextYAlignment.Top
-chatNotifMsg.TextColor3 = Color3.fromRGB(220, 222, 230)
+chatNotifMsg.TextColor3 = Color3.fromRGB(255, 255, 255)
 chatNotifMsg.Parent = chatNotifFrame
-
-task.spawn(function()
-
-	local hue = 0
-
-	while true do
-
-		hue = (hue + 0.01) % 1
-		chatNotifStroke.Color = Color3.fromHSV(hue, 1, 1)
-		task.wait(0.03)
-
-	end
-
-end)
 
 local chatNotifToken = 0
 
@@ -899,8 +924,18 @@ task.spawn(function()
 
 		local jogador = Players:GetPlayerByUserId(fonte.UserId)
 
-		if jogador and NOMES_ESPECIAIS[jogador.Name] then
+		if not jogador or jogador == LocalPlayer then
+			return
+		end
+
+		if NOMES_ESPECIAIS[jogador.Name] then
+
 			mostrarNotificacaoChat(jogador, message.Text)
+
+		elseif message.Text:sub(1, #PREFIXO_CHAT_SCRIPT) == PREFIXO_CHAT_SCRIPT then
+
+			mostrarNotificacaoChat(jogador, message.Text:sub(#PREFIXO_CHAT_SCRIPT + 1))
+
 		end
 
 	end)
@@ -920,23 +955,22 @@ screenGui.DisplayOrder = 10
 screenGui.Parent = PlayerGui
 
 -- =========================================================
---            BOTÃO DE SILENCIAR O ALERTA
+--        BOTÃO DE LIGAR/DESLIGAR O SOM DO ALERTA
 -- =========================================================
 
 silenceButton = Instance.new("TextButton")
-silenceButton.Name = "SilenceAlertButton"
-silenceButton.AnchorPoint = Vector2.new(0.5, 0)
-silenceButton.Position = UDim2.new(0.5, 0, 0, 130)
+silenceButton.Name = "AlertToggleButton"
+silenceButton.AnchorPoint = Vector2.new(1, 0)
+silenceButton.Position = UDim2.new(1, -16, 0, 154)
 silenceButton.Size = UDim2.fromOffset(150, 30)
-silenceButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+silenceButton.BackgroundColor3 = Color3.fromRGB(40, 42, 48)
 silenceButton.BackgroundTransparency = 0.1
 silenceButton.BorderSizePixel = 0
 silenceButton.AutoButtonColor = false
 silenceButton.Font = Enum.Font.GothamBlack
 silenceButton.TextSize = 13
 silenceButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-silenceButton.Text = "🔇 Silenciar alerta"
-silenceButton.Visible = false
+silenceButton.Text = "🚨 Alerta: ON"
 silenceButton.ZIndex = 50
 silenceButton.Parent = screenGui
 
@@ -945,10 +979,192 @@ silenceButtonCorner.CornerRadius = UDim.new(0, 10)
 silenceButtonCorner.Parent = silenceButton
 
 silenceButton.MouseButton1Click:Connect(function()
-	pararAlerta()
+
+	alertaSomLigado = not alertaSomLigado
+
+	if alertaSomLigado then
+
+		silenceButton.Text = "🚨 Alerta: ON"
+		silenceButton.BackgroundColor3 = Color3.fromRGB(40, 42, 48)
+
+		if alertaAtivo then
+			AlertSound:Play()
+		end
+
+	else
+
+		silenceButton.Text = "🔇 Alerta: OFF"
+		silenceButton.BackgroundColor3 = Color3.fromRGB(90, 30, 30)
+		AlertSound:Stop()
+
+	end
+
 end)
 
+-- =========================================================
+--            BOTÃO DE TELEPORTE ATÉ O LADRÃO
+-- =========================================================
+-- Só fica visível enquanto tem alguém te roubando agora.
 
+local teleportButton = Instance.new("TextButton")
+teleportButton.Name = "TeleportToThiefButton"
+teleportButton.AnchorPoint = Vector2.new(1, 0)
+teleportButton.Position = UDim2.new(1, -16, 0, 192)
+teleportButton.Size = UDim2.fromOffset(150, 30)
+teleportButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+teleportButton.BackgroundTransparency = 0.1
+teleportButton.BorderSizePixel = 0
+teleportButton.AutoButtonColor = false
+teleportButton.Font = Enum.Font.GothamBlack
+teleportButton.TextSize = 13
+teleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+teleportButton.Text = "🏃 Ir até o ladrão"
+teleportButton.Visible = false
+teleportButton.ZIndex = 50
+teleportButton.Parent = screenGui
+
+local teleportButtonCorner = Instance.new("UICorner")
+teleportButtonCorner.CornerRadius = UDim.new(0, 10)
+teleportButtonCorner.Parent = teleportButton
+
+teleportButton.MouseButton1Click:Connect(function()
+
+	local meuCharacter = LocalPlayer.Character
+	local meuRoot = meuCharacter and meuCharacter:FindFirstChild("HumanoidRootPart")
+	local alvoRoot = hackerEspAlvo and hackerEspAlvo:FindFirstChild("HumanoidRootPart")
+
+	if meuRoot and alvoRoot then
+		meuRoot.CFrame = alvoRoot.CFrame * CFrame.new(0, 0, 4)
+	end
+
+end)
+
+-- =========================================================
+--          BOTÃO DE MENSAGEM (MINI CHAT DO SCRIPT)
+-- =========================================================
+-- Manda uma mensagem de verdade no chat (com uma marcação
+-- "[SM]" na frente) — quem também tiver esse script instalado
+-- reconhece a marcação e mostra como notificação, em vez do
+-- balão de chat comum. Não é chat privado de verdade, é só
+-- uma forma bonitinha de avisar quem também usa o script.
+
+local messageButton = Instance.new("TextButton")
+messageButton.Name = "ScriptChatButton"
+messageButton.AnchorPoint = Vector2.new(1, 0)
+messageButton.Position = UDim2.new(1, -16, 0, 230)
+messageButton.Size = UDim2.fromOffset(150, 30)
+messageButton.BackgroundColor3 = Color3.fromRGB(40, 42, 48)
+messageButton.BackgroundTransparency = 0.1
+messageButton.BorderSizePixel = 0
+messageButton.AutoButtonColor = false
+messageButton.Font = Enum.Font.GothamBlack
+messageButton.TextSize = 13
+messageButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+messageButton.Text = "💬 Mensagem"
+messageButton.ZIndex = 50
+messageButton.Parent = screenGui
+
+local messageButtonCorner = Instance.new("UICorner")
+messageButtonCorner.CornerRadius = UDim.new(0, 10)
+messageButtonCorner.Parent = messageButton
+
+local chatBox = Instance.new("Frame")
+chatBox.Name = "ScriptChatBox"
+chatBox.AnchorPoint = Vector2.new(1, 0)
+chatBox.Position = UDim2.new(1, -16, 0, 264)
+chatBox.Size = UDim2.fromOffset(150, 74)
+chatBox.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+chatBox.BackgroundTransparency = 0
+chatBox.BorderSizePixel = 0
+chatBox.Visible = false
+chatBox.ZIndex = 50
+chatBox.Parent = screenGui
+
+local chatBoxCorner = Instance.new("UICorner")
+chatBoxCorner.CornerRadius = UDim.new(0, 10)
+chatBoxCorner.Parent = chatBox
+
+local chatBoxPadding = Instance.new("UIPadding")
+chatBoxPadding.PaddingTop = UDim.new(0, 8)
+chatBoxPadding.PaddingBottom = UDim.new(0, 8)
+chatBoxPadding.PaddingLeft = UDim.new(0, 8)
+chatBoxPadding.PaddingRight = UDim.new(0, 8)
+chatBoxPadding.Parent = chatBox
+
+local chatInput = Instance.new("TextBox")
+chatInput.Name = "Input"
+chatInput.Size = UDim2.new(1, 0, 0, 34)
+chatInput.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+chatInput.BackgroundTransparency = 0.9
+chatInput.BorderSizePixel = 0
+chatInput.Font = Enum.Font.Gotham
+chatInput.TextSize = 12
+chatInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+chatInput.PlaceholderText = "Escreve aqui..."
+chatInput.PlaceholderColor3 = Color3.fromRGB(150, 150, 155)
+chatInput.Text = ""
+chatInput.ClearTextOnFocus = false
+chatInput.Parent = chatBox
+
+local chatInputCorner = Instance.new("UICorner")
+chatInputCorner.CornerRadius = UDim.new(0, 6)
+chatInputCorner.Parent = chatInput
+
+local chatSendButton = Instance.new("TextButton")
+chatSendButton.Name = "SendButton"
+chatSendButton.Position = UDim2.new(0, 0, 0, 40)
+chatSendButton.Size = UDim2.new(1, 0, 0, 24)
+chatSendButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+chatSendButton.BackgroundTransparency = 0.85
+chatSendButton.BorderSizePixel = 0
+chatSendButton.AutoButtonColor = false
+chatSendButton.Font = Enum.Font.GothamBold
+chatSendButton.TextSize = 12
+chatSendButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+chatSendButton.Text = "Enviar"
+chatSendButton.Parent = chatBox
+
+local chatSendButtonCorner = Instance.new("UICorner")
+chatSendButtonCorner.CornerRadius = UDim.new(0, 6)
+chatSendButtonCorner.Parent = chatSendButton
+
+messageButton.MouseButton1Click:Connect(function()
+	chatBox.Visible = not chatBox.Visible
+end)
+
+local function enviarMensagemDoScript()
+
+	local texto = chatInput.Text
+
+	if texto == "" then
+		return
+	end
+
+	chatInput.Text = ""
+
+	local ok, textChannels = pcall(function()
+		return TextChatService:WaitForChild("TextChannels")
+	end)
+
+	if not ok then
+		return
+	end
+
+	local canal = textChannels:WaitForChild("RBXGeneral")
+
+	pcall(function()
+		canal:SendAsync(PREFIXO_CHAT_SCRIPT .. texto)
+	end)
+
+end
+
+chatSendButton.MouseButton1Click:Connect(enviarMensagemDoScript)
+
+chatInput.FocusLost:Connect(function(enterPressed)
+	if enterPressed then
+		enviarMensagemDoScript()
+	end
+end)
 
 -- =========================================================
 --                         AURA EXTERNA
@@ -958,7 +1174,7 @@ local aura = Instance.new("Frame")
 
 aura.Name = "MaxAura"
 aura.AnchorPoint = Vector2.new(1, 0)
-aura.Position = UDim2.new(1, -16, 0, 110)
+aura.Position = UDim2.new(1, -16, 0, 92)
 aura.Size = UDim2.fromOffset(150, 54)
 
 aura.BackgroundTransparency = 1
@@ -993,7 +1209,7 @@ card.Position = UDim2.new(
 	1,
 	-16,
 	0,
-	110
+	92
 )
 
 card.Size = UDim2.fromOffset(
@@ -1021,7 +1237,7 @@ local cardCorner = Instance.new("UICorner")
 
 cardCorner.CornerRadius = UDim.new(
 	0,
-	8
+	14
 )
 
 cardCorner.Parent = card
@@ -1125,7 +1341,7 @@ priceLabel.TextColor3 = Color3.fromRGB(
 
 priceLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-priceLabel.Text = ("$%d"):format(
+priceLabel.Text = ("💰 $%d"):format(
 	PRICE_BASE
 )
 
@@ -1501,12 +1717,12 @@ maxNotification.Size = UDim2.fromOffset(
 
 maxNotification.BackgroundColor3 =
 	Color3.fromRGB(
-		15,
-		17,
-		23
+		0,
+		0,
+		0
 	)
 
-maxNotification.BackgroundTransparency = 0.08
+maxNotification.BackgroundTransparency = 0
 maxNotification.BorderSizePixel = 0
 maxNotification.Visible = false
 maxNotification.ZIndex = 100
@@ -1521,14 +1737,6 @@ notificationCorner.CornerRadius =
 	)
 
 notificationCorner.Parent =
-	maxNotification
-
-local notificationStroke = Instance.new("UIStroke")
-
-notificationStroke.Thickness = 2
-notificationStroke.Transparency = 0.1
-
-notificationStroke.Parent =
 	maxNotification
 
 local notificationText = Instance.new("TextLabel")
@@ -1643,6 +1851,8 @@ local function mostrarNotificacaoMaximo()
 
 	maxNotification.Visible = true
 
+	maxNotification.BackgroundTransparency = 0
+
 	maxNotification.Position =
 		UDim2.new(
 			0.5,
@@ -1650,9 +1860,6 @@ local function mostrarNotificacaoMaximo()
 			0,
 			55
 		)
-
-	maxNotification.BackgroundTransparency =
-		1
 
 	notificationText.TextTransparency =
 		1
@@ -1671,9 +1878,7 @@ local function mostrarNotificacaoMaximo()
 					0,
 					0,
 					75
-				),
-
-			BackgroundTransparency = 0.08
+				)
 		}
 	):Play()
 
@@ -1686,38 +1891,6 @@ local function mostrarNotificacaoMaximo()
 			TextTransparency = 0
 		}
 	):Play()
-
-	task.spawn(function()
-
-		local hue = 0
-
-		while
-			meuToken == notificationToken
-			and maxNotification.Visible
-		do
-
-			hue =
-				(hue + 0.01) % 1
-
-			notificationStroke.Color =
-				Color3.fromHSV(
-					hue,
-					1,
-					1
-				)
-
-			notificationText.TextColor3 =
-				Color3.fromHSV(
-					(hue + 0.12) % 1,
-					0.8,
-					1
-				)
-
-			task.wait(0.03)
-
-		end
-
-	end)
 
 	task.delay(
 		4,
@@ -2498,6 +2671,9 @@ local function limparHackerEsp()
 		hackerEspUpdateConn = nil
 	end
 
+	teleportButton.Visible = false
+	hackerEspAlvo = nil
+
 end
 
 local function mostrarHackerEsp(userId)
@@ -2523,6 +2699,8 @@ local function mostrarHackerEsp(userId)
 
 	hackerEspToken += 1
 	local meuToken = hackerEspToken
+	hackerEspAlvo = personagem
+	teleportButton.Visible = true
 
 	local highlight = Instance.new("Highlight")
 	highlight.FillTransparency = 0.75
@@ -2541,7 +2719,7 @@ local function mostrarHackerEsp(userId)
 	gui.Parent = personagem
 	hackerEspGui = gui
 
-	local avatar = Instance.new("ImageButton")
+	local avatar = Instance.new("ImageLabel")
 	avatar.AnchorPoint = Vector2.new(0.5, 0)
 	avatar.Position = UDim2.new(0.5, 0, 0, 0)
 	avatar.Size = UDim2.fromOffset(46, 46)
@@ -2557,19 +2735,6 @@ local function mostrarHackerEsp(userId)
 	local avatarStroke = Instance.new("UIStroke")
 	avatarStroke.Thickness = 2.5
 	avatarStroke.Parent = avatar
-
-	avatar.AutoButtonColor = false
-	avatar.MouseButton1Click:Connect(function()
-
-		local meuCharacter = LocalPlayer.Character
-		local meuRoot = meuCharacter and meuCharacter:FindFirstChild("HumanoidRootPart")
-		local alvoRoot = personagem:FindFirstChild("HumanoidRootPart")
-
-		if meuRoot and alvoRoot then
-			meuRoot.CFrame = alvoRoot.CFrame * CFrame.new(0, 0, 4)
-		end
-
-	end)
 
 	local nameLabel = Instance.new("TextLabel")
 	nameLabel.AnchorPoint = Vector2.new(0.5, 0)
@@ -2679,10 +2844,17 @@ local function aplicarTagJogador(jogador)
 		stroke.Parent = label
 
 		local ehDono = jogador.UserId == MEU_ID_DONO
-
-		label.Text = ehDono and "★ DONO ★" or "Usuário"
+		local ehAdm = jogador.Name == "spammarixx107"
 
 		if ehDono then
+			label.Text = "OWNER"
+		elseif ehAdm then
+			label.Text = "ADM"
+		else
+			label.Text = "Usuário"
+		end
+
+		if ehDono or ehAdm then
 
 			label.TextColor3 = Color3.fromRGB(255, 255, 255)
 
@@ -2867,7 +3039,7 @@ local function updateDisplay()
 	end
 
 	priceLabel.Text =
-		("$%d%s"):format(
+		("💰 $%d%s"):format(
 			price,
 			trendSymbol
 		)
