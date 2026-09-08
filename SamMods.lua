@@ -849,18 +849,38 @@ end
 --                  CONFIGURAÇÕES DO JOGO
 -- =========================================================
 
-local Shared = ReplicatedStorage:WaitForChild("Shared")
-local Config = require(Shared:WaitForChild("Config"))
-local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local Shared = ReplicatedStorage:FindFirstChild("Shared")
+local Config = nil
 
-local OpenTokenExchange = Remotes:FindFirstChild("OpenTokenExchange")
-local HackEvent = Remotes:WaitForChild("HackEvent")
+if Shared then
+	local ConfigModule = Shared:FindFirstChild("Config")
+	if ConfigModule and ConfigModule:IsA("ModuleScript") then
+		local ok, result = pcall(require, ConfigModule)
+		if ok and type(result) == "table" then
+			Config = result
+		end
+	end
+end
 
-local PRICE_MIN = math.floor(lerNumero(Config.Tokens.priceMin, 5))
-local PRICE_MAX = math.floor(lerNumero(Config.Tokens.priceMax, 15))
-local PRICE_SPIKE = math.floor(lerNumero(Config.Tokens.spikePrice, 12))
-local PRICE_BASE = math.floor(lerNumero(Config.Tokens.basePrice, 10))
-local EPOCH = math.max(1, math.floor(lerNumero(Config.Tokens.priceEpochSeconds, 30)))
+Config = Config or {
+	Tokens = {
+		priceMin = 5,
+		priceMax = 15,
+		spikePrice = 12,
+		basePrice = 10,
+		priceEpochSeconds = 30,
+	},
+}
+
+local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
+local OpenTokenExchange = Remotes and Remotes:FindFirstChild("OpenTokenExchange")
+local HackEvent = Remotes and Remotes:FindFirstChild("HackEvent")
+
+local PRICE_MIN = math.floor(lerNumero(Config.Tokens and Config.Tokens.priceMin, 5))
+local PRICE_MAX = math.floor(lerNumero(Config.Tokens and Config.Tokens.priceMax, 15))
+local PRICE_SPIKE = math.floor(lerNumero(Config.Tokens and Config.Tokens.spikePrice, 12))
+local PRICE_BASE = math.floor(lerNumero(Config.Tokens and Config.Tokens.basePrice, 10))
+local EPOCH = math.max(1, math.floor(lerNumero(Config.Tokens and Config.Tokens.priceEpochSeconds, 30)))
 
 -- =========================================================
 --                          SONS
@@ -2696,68 +2716,70 @@ local KINDS_FIM = {
 	robbery_end = true, steal_start = true, steal_end = true,
 }
 
-jan:add(HackEvent.OnClientEvent:Connect(function(data)
+if HackEvent and HackEvent:IsA("RemoteEvent") then
+		jan:add(HackEvent.OnClientEvent:Connect(function(data)
 
-	if typeof(data) ~= "table" then
-		return
-	end
+		if typeof(data) ~= "table" then
+			return
+		end
 
-	local kind = tostring(data.kind or ""):lower()
-	local action = tostring(data.action or ""):lower()
-	local tipo = tostring(data.type or ""):lower()
-	local role = tostring(data.role or ""):lower()
-	local nome = tostring(data.name or "")
+		local kind = tostring(data.kind or ""):lower()
+		local action = tostring(data.action or ""):lower()
+		local tipo = tostring(data.type or ""):lower()
+		local role = tostring(data.role or ""):lower()
+		local nome = tostring(data.name or "")
 
-	if KINDS_FIM[kind] or KINDS_FIM[action] or KINDS_FIM[tipo] then
-		pararAlerta()
-		limparEsp()
-		return
-	end
+		if KINDS_FIM[kind] or KINDS_FIM[action] or KINDS_FIM[tipo] then
+			pararAlerta()
+			limparEsp()
+			return
+		end
 
-	if kind == "phase" then
+		if kind == "phase" then
 
-		if role == "victim" then
+			if role == "victim" then
 
-			local ladrao = Players:GetPlayerByUserId(tonumber(data.userId) or 0)
+				local ladrao = Players:GetPlayerByUserId(tonumber(data.userId) or 0)
 
-			if not alertaAtivo then
-				registrarRoubo(ladrao)
-				notificar({
-					titulo = "🚨 ESTÃO TE ROUBANDO",
-					texto = (ladrao and ladrao.Name or "Alguém") .. " está hackeando sua base",
-					cor = CORES.Perigo,
-					imagem = ladrao
-						and ("rbxthumb://type=AvatarHeadShot&id=%d&w=100&h=100"):format(ladrao.UserId)
-						or nil,
-					duracao = 6,
-				})
+				if not alertaAtivo then
+					registrarRoubo(ladrao)
+					notificar({
+						titulo = "🚨 ESTÃO TE ROUBANDO",
+						texto = (ladrao and ladrao.Name or "Alguém") .. " está hackeando sua base",
+						cor = CORES.Perigo,
+						imagem = ladrao
+							and ("rbxthumb://type=AvatarHeadShot&id=%d&w=100&h=100"):format(ladrao.UserId)
+							or nil,
+						duracao = 6,
+					})
+				end
+
+				iniciarAlerta()
+				mostrarEsp(tonumber(data.userId))
+
+			elseif role == "attacker" or (nome ~= "" and nome == LocalPlayer.Name) then
+
+				-- Você é quem está roubando: não faz nada.
+
+			else
+
+				warn("[SamMods] role inesperado no HackEvent: '" .. tostring(data.role) .. "'")
+
 			end
 
-			iniciarAlerta()
-			mostrarEsp(tonumber(data.userId))
-
-		elseif role == "attacker" or (nome ~= "" and nome == LocalPlayer.Name) then
-
-			-- Você é quem está roubando: não faz nada.
-
-		else
-
-			warn("[SamMods] role inesperado no HackEvent: '" .. tostring(data.role) .. "'")
+			return
 
 		end
 
-		return
+		if kind == "result" or kind == "abort" or kind == "end"
+			or kind == "ended" or kind == "finish" or kind == "finished" then
+			pararAlerta()
+			limparEsp()
+			return
+		end
 
-	end
-
-	if kind == "result" or kind == "abort" or kind == "end"
-		or kind == "ended" or kind == "finish" or kind == "finished" then
-		pararAlerta()
-		limparEsp()
-		return
-	end
-
-end))
+	end))
+end
 
 -- =========================================================
 --             NOTIFICAÇÃO DE CHAT (nomes especiais)
