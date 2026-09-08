@@ -742,7 +742,6 @@ AlertSound.Volume = 3
 
 local alertaAtivo = false
 local alertaSomLigado = true
-local silenceButton = nil
 local hackerEspAlvo = nil
 
 local function iniciarAlerta()
@@ -790,8 +789,6 @@ local NOMES_ESPECIAIS = {
 	RECRUTAKG = true,
 	spammarixx107 = true,
 }
-
-local PREFIXO_CHAT_SCRIPT = "[SM] "
 
 local NotifySound = Instance.new("Sound")
 NotifySound.Name = "ChatNotifySound"
@@ -932,10 +929,6 @@ task.spawn(function()
 
 			mostrarNotificacaoChat(jogador, message.Text)
 
-		elseif message.Text:sub(1, #PREFIXO_CHAT_SCRIPT) == PREFIXO_CHAT_SCRIPT then
-
-			mostrarNotificacaoChat(jogador, message.Text:sub(#PREFIXO_CHAT_SCRIPT + 1))
-
 		end
 
 	end)
@@ -955,53 +948,6 @@ screenGui.DisplayOrder = 10
 screenGui.Parent = PlayerGui
 
 -- =========================================================
---        BOTÃO DE LIGAR/DESLIGAR O SOM DO ALERTA
--- =========================================================
-
-silenceButton = Instance.new("TextButton")
-silenceButton.Name = "AlertToggleButton"
-silenceButton.AnchorPoint = Vector2.new(1, 0)
-silenceButton.Position = UDim2.new(1, -16, 0, 154)
-silenceButton.Size = UDim2.fromOffset(150, 30)
-silenceButton.BackgroundColor3 = Color3.fromRGB(40, 42, 48)
-silenceButton.BackgroundTransparency = 0.1
-silenceButton.BorderSizePixel = 0
-silenceButton.AutoButtonColor = false
-silenceButton.Font = Enum.Font.GothamBlack
-silenceButton.TextSize = 13
-silenceButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-silenceButton.Text = "🚨 Alerta: ON"
-silenceButton.ZIndex = 50
-silenceButton.Parent = screenGui
-
-local silenceButtonCorner = Instance.new("UICorner")
-silenceButtonCorner.CornerRadius = UDim.new(0, 10)
-silenceButtonCorner.Parent = silenceButton
-
-silenceButton.MouseButton1Click:Connect(function()
-
-	alertaSomLigado = not alertaSomLigado
-
-	if alertaSomLigado then
-
-		silenceButton.Text = "🚨 Alerta: ON"
-		silenceButton.BackgroundColor3 = Color3.fromRGB(40, 42, 48)
-
-		if alertaAtivo then
-			AlertSound:Play()
-		end
-
-	else
-
-		silenceButton.Text = "🔇 Alerta: OFF"
-		silenceButton.BackgroundColor3 = Color3.fromRGB(90, 30, 30)
-		AlertSound:Stop()
-
-	end
-
-end)
-
--- =========================================================
 --            BOTÃO DE TELEPORTE ATÉ O LADRÃO
 -- =========================================================
 -- Só fica visível enquanto tem alguém te roubando agora.
@@ -1009,7 +955,7 @@ end)
 local teleportButton = Instance.new("TextButton")
 teleportButton.Name = "TeleportToThiefButton"
 teleportButton.AnchorPoint = Vector2.new(1, 0)
-teleportButton.Position = UDim2.new(1, -16, 0, 192)
+teleportButton.Position = UDim2.new(1, -16, 0, 154)
 teleportButton.Size = UDim2.fromOffset(150, 30)
 teleportButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
 teleportButton.BackgroundTransparency = 0.1
@@ -1037,133 +983,6 @@ teleportButton.MouseButton1Click:Connect(function()
 		meuRoot.CFrame = alvoRoot.CFrame * CFrame.new(0, 0, 4)
 	end
 
-end)
-
--- =========================================================
---          BOTÃO DE MENSAGEM (MINI CHAT DO SCRIPT)
--- =========================================================
--- Manda uma mensagem de verdade no chat (com uma marcação
--- "[SM]" na frente) — quem também tiver esse script instalado
--- reconhece a marcação e mostra como notificação, em vez do
--- balão de chat comum. Não é chat privado de verdade, é só
--- uma forma bonitinha de avisar quem também usa o script.
-
-local messageButton = Instance.new("TextButton")
-messageButton.Name = "ScriptChatButton"
-messageButton.AnchorPoint = Vector2.new(1, 0)
-messageButton.Position = UDim2.new(1, -16, 0, 230)
-messageButton.Size = UDim2.fromOffset(150, 30)
-messageButton.BackgroundColor3 = Color3.fromRGB(40, 42, 48)
-messageButton.BackgroundTransparency = 0.1
-messageButton.BorderSizePixel = 0
-messageButton.AutoButtonColor = false
-messageButton.Font = Enum.Font.GothamBlack
-messageButton.TextSize = 13
-messageButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-messageButton.Text = "💬 Mensagem"
-messageButton.ZIndex = 50
-messageButton.Parent = screenGui
-
-local messageButtonCorner = Instance.new("UICorner")
-messageButtonCorner.CornerRadius = UDim.new(0, 10)
-messageButtonCorner.Parent = messageButton
-
-local chatBox = Instance.new("Frame")
-chatBox.Name = "ScriptChatBox"
-chatBox.AnchorPoint = Vector2.new(1, 0)
-chatBox.Position = UDim2.new(1, -16, 0, 264)
-chatBox.Size = UDim2.fromOffset(150, 74)
-chatBox.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-chatBox.BackgroundTransparency = 0
-chatBox.BorderSizePixel = 0
-chatBox.Visible = false
-chatBox.ZIndex = 50
-chatBox.Parent = screenGui
-
-local chatBoxCorner = Instance.new("UICorner")
-chatBoxCorner.CornerRadius = UDim.new(0, 10)
-chatBoxCorner.Parent = chatBox
-
-local chatBoxPadding = Instance.new("UIPadding")
-chatBoxPadding.PaddingTop = UDim.new(0, 8)
-chatBoxPadding.PaddingBottom = UDim.new(0, 8)
-chatBoxPadding.PaddingLeft = UDim.new(0, 8)
-chatBoxPadding.PaddingRight = UDim.new(0, 8)
-chatBoxPadding.Parent = chatBox
-
-local chatInput = Instance.new("TextBox")
-chatInput.Name = "Input"
-chatInput.Size = UDim2.new(1, 0, 0, 34)
-chatInput.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-chatInput.BackgroundTransparency = 0.9
-chatInput.BorderSizePixel = 0
-chatInput.Font = Enum.Font.Gotham
-chatInput.TextSize = 12
-chatInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-chatInput.PlaceholderText = "Escreve aqui..."
-chatInput.PlaceholderColor3 = Color3.fromRGB(150, 150, 155)
-chatInput.Text = ""
-chatInput.ClearTextOnFocus = false
-chatInput.Parent = chatBox
-
-local chatInputCorner = Instance.new("UICorner")
-chatInputCorner.CornerRadius = UDim.new(0, 6)
-chatInputCorner.Parent = chatInput
-
-local chatSendButton = Instance.new("TextButton")
-chatSendButton.Name = "SendButton"
-chatSendButton.Position = UDim2.new(0, 0, 0, 40)
-chatSendButton.Size = UDim2.new(1, 0, 0, 24)
-chatSendButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-chatSendButton.BackgroundTransparency = 0.85
-chatSendButton.BorderSizePixel = 0
-chatSendButton.AutoButtonColor = false
-chatSendButton.Font = Enum.Font.GothamBold
-chatSendButton.TextSize = 12
-chatSendButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-chatSendButton.Text = "Enviar"
-chatSendButton.Parent = chatBox
-
-local chatSendButtonCorner = Instance.new("UICorner")
-chatSendButtonCorner.CornerRadius = UDim.new(0, 6)
-chatSendButtonCorner.Parent = chatSendButton
-
-messageButton.MouseButton1Click:Connect(function()
-	chatBox.Visible = not chatBox.Visible
-end)
-
-local function enviarMensagemDoScript()
-
-	local texto = chatInput.Text
-
-	if texto == "" then
-		return
-	end
-
-	chatInput.Text = ""
-
-	local ok, textChannels = pcall(function()
-		return TextChatService:WaitForChild("TextChannels")
-	end)
-
-	if not ok then
-		return
-	end
-
-	local canal = textChannels:WaitForChild("RBXGeneral")
-
-	pcall(function()
-		canal:SendAsync(PREFIXO_CHAT_SCRIPT .. texto)
-	end)
-
-end
-
-chatSendButton.MouseButton1Click:Connect(enviarMensagemDoScript)
-
-chatInput.FocusLost:Connect(function(enterPressed)
-	if enterPressed then
-		enviarMensagemDoScript()
-	end
 end)
 
 -- =========================================================
@@ -1990,47 +1809,27 @@ local function tentarEnviarMensagemMaximo()
 end
 
 -- =========================================================
---       CLIQUE MANUAL: ENVIAR MENSAGEM NA HORA
+--       CLIQUE NO 📢: LIGAR/DESLIGAR O ALERTA DE ROUBO
 -- =========================================================
--- Ao clicar no botão 📢, tenta mandar a mensagem imediatamente,
--- sem esperar o preço bater no máximo. Ainda respeita o
--- cooldown de CHAT_COOLDOWN segundos pra evitar punição por
--- flood no chat.
 
 sendMsgButton.MouseButton1Click:Connect(function()
 
-	local enviou =
-		tentarEnviarMensagemMaximo()
+	alertaSomLigado = not alertaSomLigado
 
-	if enviou then
+	if alertaSomLigado then
 
-		-- Feedback visual: pisca verde ao enviar com sucesso.
-		local corOriginal =
-			sendMsgButton.BackgroundColor3
+		sendMsgButton.Text = "📢"
+		sendMsgButton.BackgroundColor3 = Color3.fromRGB(40, 120, 220)
 
-		sendMsgButton.BackgroundColor3 =
-			Color3.fromRGB(60, 200, 100)
-
-		TweenService:Create(
-			sendMsgButton,
-			TweenInfo.new(0.6),
-			{ BackgroundColor3 = corOriginal }
-		):Play()
+		if alertaAtivo then
+			AlertSound:Play()
+		end
 
 	else
 
-		-- Feedback visual: pisca vermelho se ainda em cooldown.
-		local corOriginal =
-			sendMsgButton.BackgroundColor3
-
-		sendMsgButton.BackgroundColor3 =
-			Color3.fromRGB(200, 60, 60)
-
-		TweenService:Create(
-			sendMsgButton,
-			TweenInfo.new(0.6),
-			{ BackgroundColor3 = corOriginal }
-		):Play()
+		sendMsgButton.Text = "🔇"
+		sendMsgButton.BackgroundColor3 = Color3.fromRGB(90, 30, 30)
+		AlertSound:Stop()
 
 	end
 
