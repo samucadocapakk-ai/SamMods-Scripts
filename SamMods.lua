@@ -1258,6 +1258,21 @@ novo("UIPadding", {
 	PaddingRight = UDim.new(0, 10),
 }, painel)
 
+local painelTitulo = novo("TextLabel", {
+	Size = UDim2.new(1, 0, 0, 16),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBlack,
+	TextSize = 12,
+	TextColor3 = CORES.Texto,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "SamMods • Painel",
+	ZIndex = 31,
+}, painel)
+
+Rainbow.add(painelTitulo, function(cor)
+	painelTitulo.TextColor3 = cor
+end)
+
 -- Arrastar painel de configurações pelo título
 do
 	local arrastando = false
@@ -1291,21 +1306,6 @@ do
 		end
 	end))
 end
-
-local painelTitulo = novo("TextLabel", {
-	Size = UDim2.new(1, 0, 0, 16),
-	BackgroundTransparency = 1,
-	Font = Enum.Font.GothamBlack,
-	TextSize = 12,
-	TextColor3 = CORES.Texto,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	Text = "SamMods • Painel",
-	ZIndex = 31,
-}, painel)
-
-Rainbow.add(painelTitulo, function(cor)
-	painelTitulo.TextColor3 = cor
-end)
 
 local abasFrame = novo("Frame", {
 	Position = UDim2.new(0, 0, 0, 20),
