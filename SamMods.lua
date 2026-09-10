@@ -1,6 +1,6 @@
 --[[
 	=========================================================
-	  SamMods — TokenPriceWatcher v2
+	  SamMods — TokenPriceWatcher v2 kkk
 	  Local: StarterPlayerScripts (LocalScript)
 	=========================================================
 
