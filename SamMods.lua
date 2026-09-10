@@ -20,12 +20,8 @@
 	  • Pulsação do modo máximo usa UIScale em vez de mudar
 	    Size, então não briga mais com o hover nem desalinha
 	    os botões.
-	  • O botão 📢 saiu (a mensagem no chat continua automática
-	    e no F4). Agora são ⚙ painel, 🔔 som e 👁 modo discreto.
-	  • Suporte a celular: UI maior, arrasto por toque, painel
-	    como janela própria (centralizada, com ✕ e arrastável)
-	    que cabe na tela e se reajusta ao girar o aparelho, e um
-	    botão 👁 flutuante pra sair do modo discreto sem teclado.
+	  • O botão 📢 fazia outra coisa (ligava/desligava o som).
+	    Agora cada botão faz o que o ícone diz.
 	  • Limpeza remove TODAS as GUIs do mod ao recarregar.
 
 	NOVIDADES
@@ -125,14 +121,6 @@ local CONFIG = {
 		irAteLadrao = Enum.KeyCode.F5,
 	},
 }
-
--- Mobile: sem teclado, tudo precisa ser maior e tocável.
-local EH_MOBILE = UserInputService.TouchEnabled
-	and not UserInputService.KeyboardEnabled
-
-local ESCALA_UI = EH_MOBILE and 1.15 or 1
-local BTN_ICONE = EH_MOBILE and 32 or 24
-local BTN_ALTURA = EH_MOBILE and 34 or 28
 
 local CARD_W, CARD_H = 190, 70
 
@@ -925,8 +913,6 @@ local container = novo("Frame", {
 	ZIndex = 10,
 }, gui)
 
-novo("UIScale", { Scale = ESCALA_UI }, container)
-
 -- ---------------------- Aura externa ----------------------
 
 local aura = novo("Frame", {
@@ -1155,13 +1141,14 @@ end
 -- =========================================================
 --                    BOTÕES LATERAIS
 -- =========================================================
--- Coluna de botõezinhos à esquerda do card.
+-- Coluna de botõezinhos à esquerda do card. Cada um faz
+-- exatamente o que o ícone diz (na v1 o 📢 mexia no som).
 
 local barraBotoes = novo("Frame", {
 	Name = "SideButtons",
 	AnchorPoint = Vector2.new(1, 0),
 	Position = UDim2.new(0, -6, 0, 0),
-	Size = UDim2.fromOffset(BTN_ICONE, BTN_ICONE * 3 + 8),
+	Size = UDim2.fromOffset(24, CARD_H),
 	BackgroundTransparency = 1,
 	ZIndex = 15,
 }, container)
@@ -1176,12 +1163,12 @@ local function botaoIcone(icone, ordem, dica)
 
 	local b = novo("TextButton", {
 		Name = "Icon_" .. ordem,
-		Size = UDim2.fromOffset(BTN_ICONE, BTN_ICONE),
+		Size = UDim2.fromOffset(24, 24),
 		BackgroundColor3 = CORES.Fundo2,
 		BackgroundTransparency = 0.1,
 		AutoButtonColor = false,
 		Font = Enum.Font.GothamBold,
-		TextSize = EH_MOBILE and 16 or 12,
+		TextSize = 12,
 		Text = icone,
 		TextColor3 = CORES.Texto,
 		LayoutOrder = ordem,
@@ -1209,28 +1196,7 @@ end
 
 local btnConfig = botaoIcone("⚙", 1, "BtnConfig")
 local btnSom = botaoIcone("🔔", 2, "BtnSom")
-local btnOlho = botaoIcone("👁", 3, "BtnDiscreto")
-
--- Botão solto que reaparece no modo discreto (no celular não
--- dá pra apertar F1 pra voltar).
-local btnRestaurar = novo("TextButton", {
-	Name = "BtnRestaurar",
-	AnchorPoint = Vector2.new(1, 0),
-	Position = UDim2.new(1, -8, 0, 8),
-	Size = UDim2.fromOffset(BTN_ICONE, BTN_ICONE),
-	BackgroundColor3 = CORES.Fundo,
-	BackgroundTransparency = 0.45,
-	AutoButtonColor = false,
-	Font = Enum.Font.GothamBold,
-	TextSize = EH_MOBILE and 16 or 12,
-	Text = "👁",
-	TextColor3 = CORES.Texto,
-	TextTransparency = 0.35,
-	Visible = false,
-	ZIndex = 40,
-}, gui)
-
-cantos(btnRestaurar, 8)
+local btnChat = botaoIcone("📢", 3, "BtnChat")
 
 -- =========================================================
 --             BOTÕES DE AÇÃO CONTRA O LADRÃO
@@ -1242,13 +1208,13 @@ local function botaoLargo(nome, texto, corFundo, y)
 		Name = nome,
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, 0, 1, y),
-		Size = UDim2.fromOffset(CARD_W, BTN_ALTURA),
+		Size = UDim2.fromOffset(CARD_W, 28),
 		BackgroundColor3 = corFundo,
 		BackgroundTransparency = 0.1,
 		BorderSizePixel = 0,
 		AutoButtonColor = false,
 		Font = Enum.Font.GothamBlack,
-		TextSize = EH_MOBILE and 13 or 12,
+		TextSize = 12,
 		TextColor3 = CORES.Texto,
 		Text = texto,
 		Visible = false,
@@ -1262,47 +1228,23 @@ local function botaoLargo(nome, texto, corFundo, y)
 end
 
 local lockButton = botaoLargo("LockOnThief", "🔓 Travar no ladrão", CORES.Fundo2, 8)
-local teleportButton = botaoLargo(
-	"GoToThief",
-	"🏃 Ir até o ladrão",
-	CORES.Perigo,
-	8 + BTN_ALTURA + 4
-)
+local teleportButton = botaoLargo("GoToThief", "🏃 Ir até o ladrão", CORES.Perigo, 40)
 
 -- =========================================================
 --                  PAINEL (CONFIG / LOG / STATS)
 -- =========================================================
 
--- O painel é uma janela própria (fora do card), pra não sair
--- da tela quando o card é arrastado e pra caber no celular.
-
-local function tela()
-	local camera = Workspace.CurrentCamera
-	return camera and camera.ViewportSize or Vector2.new(1280, 720)
-end
-
-local PAINEL_W, PAINEL_H
-
-local function medirPainel()
-	local vp = tela()
-	PAINEL_W = math.floor(math.min(300, vp.X * 0.9))
-	PAINEL_H = math.floor(math.min(EH_MOBILE and 260 or 300, vp.Y * 0.7))
-end
-
-medirPainel()
-
 local painel = novo("Frame", {
 	Name = "Painel",
-	AnchorPoint = Vector2.new(0.5, 0.5),
-	Position = UDim2.fromScale(0.5, 0.5),
-	Size = UDim2.fromOffset(PAINEL_W, PAINEL_H),
+	AnchorPoint = Vector2.new(1, 0),
+	Position = UDim2.new(1, 0, 1, 76),
+	Size = UDim2.fromOffset(268, 250),
 	BackgroundColor3 = CORES.Fundo,
 	BackgroundTransparency = 0.08,
 	BorderSizePixel = 0,
-	Active = true,
 	Visible = false,
 	ZIndex = 30,
-}, gui)
+}, container)
 
 cantos(painel, 12)
 contorno(painel, CORES.Base, 1.2, 0.6)
@@ -1314,51 +1256,24 @@ novo("UIPadding", {
 	PaddingRight = UDim.new(0, 10),
 }, painel)
 
--- Barra de título: arrasta a janela e fecha.
-local painelBarra = novo("TextButton", {
-	Name = "Barra",
-	Size = UDim2.new(1, 0, 0, 20),
-	BackgroundTransparency = 1,
-	AutoButtonColor = false,
-	Text = "",
-	ZIndex = 31,
-}, painel)
-
 local painelTitulo = novo("TextLabel", {
-	Size = UDim2.new(1, -26, 1, 0),
+	Size = UDim2.new(1, 0, 0, 16),
 	BackgroundTransparency = 1,
 	Font = Enum.Font.GothamBlack,
-	TextSize = EH_MOBILE and 14 or 12,
+	TextSize = 12,
 	TextColor3 = CORES.Texto,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	Text = "SamMods • Painel",
-	ZIndex = 32,
-}, painelBarra)
+	ZIndex = 31,
+}, painel)
 
 Rainbow.add(painelTitulo, function(cor)
 	painelTitulo.TextColor3 = cor
 end)
 
-local painelFechar = novo("TextButton", {
-	Name = "Fechar",
-	AnchorPoint = Vector2.new(1, 0.5),
-	Position = UDim2.new(1, 0, 0.5, 0),
-	Size = UDim2.fromOffset(22, 22),
-	BackgroundColor3 = CORES.Fundo2,
-	BackgroundTransparency = 0.2,
-	AutoButtonColor = false,
-	Font = Enum.Font.GothamBlack,
-	TextSize = 13,
-	Text = "✕",
-	TextColor3 = CORES.Texto,
-	ZIndex = 32,
-}, painelBarra)
-
-cantos(painelFechar, 6)
-
 local abasFrame = novo("Frame", {
-	Position = UDim2.new(0, 0, 0, 24),
-	Size = UDim2.new(1, 0, 0, EH_MOBILE and 28 or 22),
+	Position = UDim2.new(0, 0, 0, 20),
+	Size = UDim2.new(1, 0, 0, 22),
 	BackgroundTransparency = 1,
 	ZIndex = 31,
 }, painel)
@@ -1393,12 +1308,12 @@ local function criarAba(nome, rotulo, ordem)
 
 	local botao = novo("TextButton", {
 		Name = "Aba_" .. nome,
-		Size = UDim2.new(1 / 3, -3, 1, 0),
+		Size = UDim2.fromOffset(80, 22),
 		BackgroundColor3 = CORES.Fundo2,
 		BackgroundTransparency = 0.55,
 		AutoButtonColor = false,
 		Font = Enum.Font.GothamBold,
-		TextSize = EH_MOBILE and 12 or 11,
+		TextSize = 11,
 		Text = rotulo,
 		TextColor3 = CORES.TextoFraco,
 		LayoutOrder = ordem,
@@ -1409,11 +1324,11 @@ local function criarAba(nome, rotulo, ordem)
 
 	local conteudo = novo("ScrollingFrame", {
 		Name = "Conteudo_" .. nome,
-		Position = UDim2.new(0, 0, 0, EH_MOBILE and 58 or 52),
-		Size = UDim2.new(1, 0, 1, EH_MOBILE and -58 or -52),
+		Position = UDim2.new(0, 0, 0, 48),
+		Size = UDim2.new(1, 0, 1, -48),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		ScrollBarThickness = EH_MOBILE and 5 or 3,
+		ScrollBarThickness = 3,
 		ScrollBarImageColor3 = CORES.Base,
 		CanvasSize = UDim2.new(0, 0, 0, 0),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
@@ -1447,7 +1362,7 @@ local function linhaToggle(pai, chave, rotulo, ordem, aoMudar)
 
 	local linha = novo("TextButton", {
 		Name = "Toggle_" .. chave,
-		Size = UDim2.new(1, -6, 0, EH_MOBILE and 32 or 26),
+		Size = UDim2.new(1, -6, 0, 26),
 		BackgroundColor3 = CORES.Fundo2,
 		BackgroundTransparency = 0.35,
 		AutoButtonColor = false,
@@ -1463,7 +1378,7 @@ local function linhaToggle(pai, chave, rotulo, ordem, aoMudar)
 		Size = UDim2.new(1, -54, 1, 0),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamMedium,
-		TextSize = EH_MOBILE and 12 or 11,
+		TextSize = 11,
 		TextColor3 = CORES.Texto,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Text = rotulo,
@@ -1520,10 +1435,10 @@ end
 local function linhaTexto(pai, rotulo, ordem)
 
 	local label = novo("TextLabel", {
-		Size = UDim2.new(1, -6, 0, EH_MOBILE and 22 or 20),
+		Size = UDim2.new(1, -6, 0, 20),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamMedium,
-		TextSize = EH_MOBILE and 12 or 11,
+		TextSize = 11,
 		TextColor3 = CORES.TextoFraco,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Text = rotulo,
@@ -1538,7 +1453,7 @@ end
 local function linhaInput(pai, rotulo, valorInicial, ordem, aoConfirmar)
 
 	local linha = novo("Frame", {
-		Size = UDim2.new(1, -6, 0, EH_MOBILE and 32 or 26),
+		Size = UDim2.new(1, -6, 0, 26),
 		BackgroundColor3 = CORES.Fundo2,
 		BackgroundTransparency = 0.35,
 		BorderSizePixel = 0,
@@ -1553,7 +1468,7 @@ local function linhaInput(pai, rotulo, valorInicial, ordem, aoConfirmar)
 		Size = UDim2.new(0.55, -8, 1, 0),
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamMedium,
-		TextSize = EH_MOBILE and 12 or 11,
+		TextSize = 11,
 		TextColor3 = CORES.Texto,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Text = rotulo,
@@ -1563,11 +1478,11 @@ local function linhaInput(pai, rotulo, valorInicial, ordem, aoConfirmar)
 	local caixa = novo("TextBox", {
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, -6, 0.5, 0),
-		Size = UDim2.new(0.4, 0, 0, EH_MOBILE and 24 or 18),
+		Size = UDim2.new(0.4, 0, 0, 18),
 		BackgroundColor3 = CORES.Fundo,
 		BorderSizePixel = 0,
 		Font = Enum.Font.GothamBold,
-		TextSize = EH_MOBILE and 12 or 11,
+		TextSize = 11,
 		TextColor3 = CORES.Texto,
 		Text = tostring(valorInicial),
 		ClearTextOnFocus = false,
@@ -2737,41 +2652,8 @@ local metaValorAvisada = false
 local function aplicarVisibilidade()
 	container.Visible = not modoDiscreto
 	notifyPilha.Visible = not modoDiscreto
-	btnRestaurar.Visible = modoDiscreto
-	if modoDiscreto then
-		painel.Visible = false
-	end
 	if setaLadrao then
 		setaLadrao.Visible = setaLadrao.Visible and not modoDiscreto
-	end
-end
-
--- Girou o celular / mudou a janela: refaz o tamanho do painel
--- e garante que o card não ficou fora da tela.
-do
-	local camera = Workspace.CurrentCamera
-
-	local function ajustar()
-
-		medirPainel()
-
-		if painel.Visible then
-			painel.Size = UDim2.fromOffset(PAINEL_W, PAINEL_H)
-		end
-
-		local vp = tela()
-		local pos = container.AbsolutePosition
-		local tam = container.AbsoluteSize
-
-		if pos.X + tam.X > vp.X or pos.Y + tam.Y > vp.Y or pos.X < 0 or pos.Y < 0 then
-			container.AnchorPoint = Vector2.new(1, 0)
-			container.Position = UDim2.new(1, -16, 0, 92)
-		end
-
-	end
-
-	if camera then
-		jan:add(camera:GetPropertyChangedSignal("ViewportSize"):Connect(ajustar))
 	end
 end
 
@@ -2904,75 +2786,13 @@ local function alternarPainel()
 	painel.Visible = not painel.Visible
 
 	if painel.Visible then
-		medirPainel()
-		painel.Size = UDim2.fromOffset(PAINEL_W, 0)
-		tween(
-			painel,
-			{ Size = UDim2.fromOffset(PAINEL_W, PAINEL_H) },
-			0.2,
-			Enum.EasingStyle.Back
-		)
+		painel.Size = UDim2.fromOffset(268, 0)
+		tween(painel, { Size = UDim2.fromOffset(268, 250) }, 0.2, Enum.EasingStyle.Back)
 	end
 
 end
 
 btnConfig.MouseButton1Click:Connect(alternarPainel)
-
-painelFechar.MouseButton1Click:Connect(function()
-	painel.Visible = false
-end)
-
--- Arrastar a janela do painel pela barra de título.
-do
-	local arrastando = false
-	local inicio
-	local inicioPos
-
-	painelBarra.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-			arrastando = true
-			inicio = input.Position
-			inicioPos = painel.AbsolutePosition
-		end
-	end)
-
-	jan:add(UserInputService.InputChanged:Connect(function(input)
-
-		if not arrastando then
-			return
-		end
-
-		if input.UserInputType ~= Enum.UserInputType.MouseMovement
-			and input.UserInputType ~= Enum.UserInputType.Touch then
-			return
-		end
-
-		local vp = tela()
-		local delta = input.Position - inicio
-		local x = math.clamp(inicioPos.X + delta.X, 0, math.max(0, vp.X - painel.AbsoluteSize.X))
-		local y = math.clamp(inicioPos.Y + delta.Y, 0, math.max(0, vp.Y - painel.AbsoluteSize.Y))
-
-		painel.AnchorPoint = Vector2.new(0, 0)
-		painel.Position = UDim2.fromOffset(math.floor(x), math.floor(y))
-
-	end))
-
-	jan:add(UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-			arrastando = false
-		end
-	end))
-end
-
-local function alternarDiscreto()
-	modoDiscreto = not modoDiscreto
-	aplicarVisibilidade()
-end
-
-btnOlho.MouseButton1Click:Connect(alternarDiscreto)
-btnRestaurar.MouseButton1Click:Connect(alternarDiscreto)
 
 btnSom.MouseButton1Click:Connect(function()
 
@@ -2986,6 +2806,30 @@ btnSom.MouseButton1Click:Connect(function()
 		end
 	else
 		AlertSound:Stop()
+	end
+
+end)
+
+btnChat.MouseButton1Click:Connect(function()
+
+	local enviou, faltam = tentarEnviarMensagem()
+
+	if enviou then
+		notificar({
+			titulo = "💬 Mensagem enviada",
+			texto = CONFIG.mensagemMaximo,
+			cor = CORES.Ok,
+			duracao = 3,
+			som = false,
+		})
+	else
+		notificar({
+			titulo = "⏳ Aguarde",
+			texto = ("Cooldown do chat: faltam %ds"):format(faltam),
+			cor = CORES.Spike,
+			duracao = 3,
+			som = false,
+		})
 	end
 
 end)
