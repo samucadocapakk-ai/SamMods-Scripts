@@ -1,3513 +1,3024 @@
+--[[
+    ============================================================
+    SamMods Auto Defender • v3
+    LocalScript - StarterPlayerScripts
+    ============================================================
+
+    BASE:
+    - Auto Defender / Baseball Bat
+    - HackEvent victim -> identifica o ladrão
+    - ESP do ladrão
+    - MeleeHit no ladrão durante a defesa
+    - Solta quando o roubo termina
+
+    NOVA ESTRUTURA:
+    - Bolha pequena para abrir/fechar CONFIGURAÇÕES
+    - LOJA independente do painel de configurações
+    - Configurações com funções do sistema antigo
+    - Stats / Roubos
+    - Metas
+    - Modo discreto
+    - Som / efeitos / notificações / ESP / seta / auto-lock
+    - Editor de interface por seleção:
+        * clique em objetos
+        * arraste um retângulo para selecionar vários
+        * escala somente os selecionados
+        * seleção múltipla
+    - Não aplica UIScale automaticamente no painel da SamMods
+    - Painéis próprios: sem fundo e sem borda estrutural.
+      Contornos ficam nos textos/imagens/badges quando úteis.
+
+    OBS:
+    Tudo continua LOCAL. Nenhum Script de servidor é criado.
+]]
+
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
-local TweenService = game:GetService("TweenService")
-local SoundService = game:GetService("SoundService")
 local RunService = game:GetService("RunService")
-local TextChatService = game:GetService("TextChatService")
+local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local TextChatService = game:GetService("TextChatService")
 local StarterGui = game:GetService("StarterGui")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- =========================================================
---              TAKEOVER DA VERSÃO NOVA
--- =========================================================
--- Sempre que esta versão for executada, ela assume o controle
--- e encerra instâncias antigas conhecidas do mesmo sistema.
--- Isso evita duas versões do painel/Auto Defender rodando juntas.
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local HackEvent = Remotes:WaitForChild("HackEvent")
+local MeleeHit = Remotes:WaitForChild("MeleeHit")
+local OpenTokenExchange = Remotes:FindFirstChild("OpenTokenExchange")
 
-local TAKEOVER_VERSION = 3
-local TAKEOVER_ATTRIBUTE = "SamMods_TokenWatcher_Version"
+-- ============================================================
+-- TAKEOVER: SOMENTE O AUTO DEFENDER
+-- ============================================================
 
-local function encerrarVersoesAntigas()
-	local playerScripts = LocalPlayer:FindFirstChildOfClass("PlayerScripts")
-	if not playerScripts then
-		return
-	end
+local INSTANCE_MARKER = "SamMods_AutoDefender_Instance"
+local GUI_NAME = "SamModsAutoDefenderV3"
 
-	local nomesAntigos = {
-		["TokenPriceWatcher"] = true,
-		["TokenPriceWatcher_ATUALIZADO"] = true,
-		["SamMods_TokenWatcher"] = true,
-		["SamMods_TokenWatcher_COM_AutoDefender"] = true,
-		["SamMods_AutoDefender"] = true,
-		["SamMods_AutoDefender_BaseballBat"] = true,
-	}
-
-	for _, child in ipairs(playerScripts:GetChildren()) do
-		if child ~= script
-			and child:IsA("LocalScript")
-			and nomesAntigos[child.Name] then
-			pcall(function()
-				child:Destroy()
-			end)
-		end
-	end
+local oldMarker = PlayerGui:FindFirstChild(INSTANCE_MARKER)
+if oldMarker then
+    oldMarker:Destroy()
 end
 
-encerrarVersoesAntigas()
-PlayerGui:SetAttribute(TAKEOVER_ATTRIBUTE, TAKEOVER_VERSION)
+for _, name in ipairs({
+    GUI_NAME,
+    "SamModsAutoDefender",
+    "SamMods_AutoDefender",
+}) do
+    local oldGui = PlayerGui:FindFirstChild(name)
+    if oldGui then
+        oldGui:Destroy()
+    end
+end
 
--- =========================================================
---                        CONFIG
--- =========================================================
--- Tudo que dá pra mexer sem entender o resto do código.
+local instanceMarker = Instance.new("BoolValue")
+instanceMarker.Name = INSTANCE_MARKER
+instanceMarker.Value = true
+instanceMarker.Parent = PlayerGui
+
+-- ============================================================
+-- CONFIG
+-- ============================================================
 
 local CONFIG = {
+    ToolName = "Baseball Bat",
+    FollowOffset = CFrame.new(0, 0, 3),
+    AttemptDuration = 0.45,
+    RetryDelay = 0.55,
+    EquipDelay = 0.15,
+    MeleeInterval = 0.10,
 
-	-- Identidade
-	introTitulo = "SamMods",
-	introSubtitulo = "MODS ROBLOX",
-	mostrarIntro = true,
+    PriceMin = 5,
+    PriceMax = 15,
+    PriceSpike = 12,
+    BasePrice = 10,
+    EpochSeconds = 30,
 
-	donoUserId = 4290770735,
-	admNome = "spammarixx107",
+    ChatCooldown = 27,
+    MaxMessage = "🌈 Loja: preço dos tokens está no máximo",
 
-	-- Nomes que disparam a notificação de chat
-	nomesEspeciais = {
-		RECRUTAKG = true,
-		spammarixx107 = true,
-	},
+    RainbowSpeed = 0.45,
 
-	-- Mensagem automática de loja no máximo
-	mensagemMaximo = "🌈 Loja: preço dos tokens está no máximo",
-	chatCooldown = 27,
-
-	-- Sons
-	somAlertaId = "rbxassetid://171165317",
-	somAlertaVolume = 3,
-	somNotifyId = "rbxassetid://71450094482101",
-	somNotifyVolume = 3,
-
-	-- Visual
-	rainbowVelocidade = 0.45,
-	historicoTamanho = 26,
-
-	-- Padrões dos liga-desliga (o usuário muda no painel ⚙)
-	padroes = {
-		somAlerta = true,
-		efeitosMaximo = true,
-		avisoChatAuto = true,
-		espLadrao = true,
-		setaLadrao = true,
-		tagsJogadores = true,
-		autoTravar = false,
-		notificacoes = true,
-	},
-
-	-- Metas (0 = desligado)
-	metaTokens = 0,
-	metaValor = 0,
-
-	-- Atalhos
-	teclas = {
-		esconderTudo = Enum.KeyCode.F1,
-		abrirConfig = Enum.KeyCode.F2,
-		alternarSom = Enum.KeyCode.F3,
-		enviarMensagem = Enum.KeyCode.F4,
-		irAteLadrao = Enum.KeyCode.F5,
-		defesaAutomatica = Enum.KeyCode.F6,
-	},
+    MetaTokens = 0,
+    MetaValor = 0,
 }
 
--- Mobile: sem teclado, tudo precisa ser maior e tocável.
-local EH_MOBILE = UserInputService.TouchEnabled
-	and not UserInputService.KeyboardEnabled
+-- Config do jogo, quando disponível.
+do
+    local ok, gameConfig = pcall(function()
+        local Shared = ReplicatedStorage:WaitForChild("Shared", 5)
+        return Shared and require(Shared:WaitForChild("Config", 5))
+    end)
 
-local ESCALA_UI = EH_MOBILE and 1.15 or 1
-local BTN_ICONE = EH_MOBILE and 32 or 24
-local BTN_ALTURA = EH_MOBILE and 34 or 28
+    if ok and gameConfig and gameConfig.Tokens then
+        CONFIG.PriceMin = math.floor(tonumber(gameConfig.Tokens.priceMin) or CONFIG.PriceMin)
+        CONFIG.PriceMax = math.floor(tonumber(gameConfig.Tokens.priceMax) or CONFIG.PriceMax)
+        CONFIG.PriceSpike = math.floor(tonumber(gameConfig.Tokens.spikePrice) or CONFIG.PriceSpike)
+        CONFIG.BasePrice = math.floor(tonumber(gameConfig.Tokens.basePrice) or CONFIG.BasePrice)
+        CONFIG.EpochSeconds = math.max(
+            1,
+            math.floor(
+                tonumber(gameConfig.Tokens.priceEpochSeconds)
+                or CONFIG.EpochSeconds
+            )
+        )
+    end
+end
 
-local CARD_W, CARD_H = 190, 70
+-- ============================================================
+-- ESTADOS
+-- ============================================================
 
-local CORES = {
-	Min = Color3.fromRGB(80, 220, 120),
-	Base = Color3.fromRGB(0, 170, 255),
-	Spike = Color3.fromRGB(255, 130, 40),
-	Max = Color3.fromRGB(255, 200, 0),
-	Fundo = Color3.fromRGB(18, 20, 26),
-	Fundo2 = Color3.fromRGB(28, 31, 38),
-	Texto = Color3.fromRGB(255, 255, 255),
-	TextoFraco = Color3.fromRGB(165, 170, 182),
-	Perigo = Color3.fromRGB(220, 60, 60),
-	Ok = Color3.fromRGB(60, 200, 120),
+local S = {
+    autoDefender = false,
+    somAlerta = true,
+    efeitosMaximo = true,
+    avisoChatAuto = true,
+    espLadrao = true,
+    setaLadrao = true,
+    tagsJogadores = false,
+    autoTravar = false,
+    notificacoes = true,
+    lojaVisivel = true,
+    mostrarNotificacaoMaximo = true,
 }
 
--- =========================================================
---            PROTEÇÃO CONTRA MÚLTIPLAS INSTÂNCIAS
--- =========================================================
-
-local INSTANCE_MARKER = "SamMods_TokenWatcher_Instance"
-
--- Se já existe uma instância antiga, a versão nova assume o controle
--- em vez de simplesmente bloquear a execução.
-local previousMarker = PlayerGui:FindFirstChild(INSTANCE_MARKER)
-if previousMarker then
-	pcall(function()
-		previousMarker:Destroy()
-	end)
-end
-
-local marker = Instance.new("BoolValue")
-marker.Name = INSTANCE_MARKER
-marker.Value = true
-marker.Parent = PlayerGui
-
--- Remove restos de execuções anteriores.
-for _, nome in ipairs({
-	"TokenPriceWatcherGui",
-	"SamModsMainGui",
-	"SamModsIntroGui",
-	"ChatNotifyGui",
-	"SamModsNotifyGui",
-}) do
-	local antigo = PlayerGui:FindFirstChild(nome)
-	if antigo then
-		antigo:Destroy()
-	end
-end
-
--- =========================================================
---                    JANITOR (limpeza)
--- =========================================================
--- Guarda conexões/instâncias e desliga tudo de uma vez.
-
-local Janitor = {}
-Janitor.__index = Janitor
-
-function Janitor.new()
-	return setmetatable({ _itens = {}, _morto = false }, Janitor)
-end
-
-function Janitor:add(item)
-	if self._morto then
-		if typeof(item) == "RBXScriptConnection" then
-			item:Disconnect()
-		elseif typeof(item) == "Instance" then
-			item:Destroy()
-		end
-		return item
-	end
-	table.insert(self._itens, item)
-	return item
-end
-
-function Janitor:destroy()
-	if self._morto then
-		return
-	end
-	self._morto = true
-	for i = #self._itens, 1, -1 do
-		local item = self._itens[i]
-		if typeof(item) == "RBXScriptConnection" then
-			pcall(function()
-				item:Disconnect()
-			end)
-		elseif typeof(item) == "Instance" then
-			pcall(function()
-				item:Destroy()
-			end)
-		elseif type(item) == "function" then
-			pcall(item)
-		end
-		self._itens[i] = nil
-	end
-end
-
-function Janitor:vivo()
-	return not self._morto
-end
-
-local jan = Janitor.new()
-jan:add(marker)
-
-local rodando = true
-
-jan:add(function()
-	rodando = false
-end)
-
-script.Destroying:Connect(function()
-	jan:destroy()
-end)
-
--- =========================================================
---                       UTILIDADES
--- =========================================================
-
-local function tween(obj, props, tempo, estilo, dir)
-	local t = TweenService:Create(
-		obj,
-		TweenInfo.new(
-			tempo or 0.25,
-			estilo or Enum.EasingStyle.Quad,
-			dir or Enum.EasingDirection.Out
-		),
-		props
-	)
-	t:Play()
-	return t
-end
-
-local function novo(classe, props, pai)
-	local inst = Instance.new(classe)
-	for k, v in pairs(props) do
-		inst[k] = v
-	end
-	if pai then
-		inst.Parent = pai
-	end
-	return inst
-end
-
-local function cantos(pai, raio)
-	return novo("UICorner", { CornerRadius = UDim.new(0, raio or 10) }, pai)
-end
-
-local function contorno(pai, cor, grossura, transparencia)
-	return novo("UIStroke", {
-		Color = cor or CORES.Texto,
-		Thickness = grossura or 1,
-		Transparency = transparencia or 0.5,
-	}, pai)
-end
-
-local function lerNumero(valor, padrao)
-	return tonumber(valor) or padrao
-end
-
--- ---- Unidades (uma tabela só, usada nos dois sentidos) ----
-
-local UNIDADES = {
-	{ 1e63, "Vg" },
-	{ 1e60, "Nod" },
-	{ 1e57, "Ocd" },
-	{ 1e54, "Spd" },
-	{ 1e51, "Sxd" },
-	{ 1e48, "Qid" },
-	{ 1e45, "Qad" },
-	{ 1e42, "Td" },
-	{ 1e39, "Dd" },
-	{ 1e36, "Ud" },
-	{ 1e33, "Dc" },
-	{ 1e30, "No" },
-	{ 1e27, "Oc" },
-	{ 1e24, "Sp" },
-	{ 1e21, "Sx" },
-	{ 1e18, "Qi" },
-	{ 1e15, "Qa" },
-	{ 1e12, "T" },
-	{ 1e9, "B" },
-	{ 1e6, "M" },
-	{ 1e3, "K" },
+local stats = {
+    inicioSessao = os.clock(),
+    tokensIniciais = nil,
+    tokensAtuais = 0,
+    maiorPreco = 0,
+    vezesNoMaximo = 0,
+    roubosSofridos = 0,
 }
 
-local UNIDADES_POR_SUFIXO = {}
+local logRoubos = {}
 
-for _, par in ipairs(UNIDADES) do
-	UNIDADES_POR_SUFIXO[par[2]:lower()] = par[1]
+local enabled = false
+local robberyActive = false
+local currentThief = nil
+local followConnection = nil
+local defenseThread = nil
+
+local shopMaxActive = false
+local lastPrice = nil
+local lastChatMessageAt = -math.huge
+
+local modoDiscreto = false
+local configOpen = false
+
+local tagConnections = {}
+local thiefEspGui = nil
+local thiefEspConnections = {}
+local setaLadrao = nil
+
+local maxConnections = {}
+
+-- ============================================================
+-- CORES
+-- ============================================================
+
+local COLORS = {
+    Text = Color3.fromRGB(245, 247, 250),
+    Muted = Color3.fromRGB(165, 170, 182),
+    Accent = Color3.fromRGB(85, 165, 255),
+    Good = Color3.fromRGB(60, 210, 120),
+    Danger = Color3.fromRGB(235, 75, 75),
+    Gold = Color3.fromRGB(255, 205, 65),
+    Orange = Color3.fromRGB(255, 140, 45),
+    Green = Color3.fromRGB(80, 220, 120),
+}
+
+local SYSTEM_PREFIXES = {
+    SamModsAutoDefenderV3 = true,
+    SamModsAutoDefender = true,
+    SamMods_AutoDefender = true,
+}
+
+-- ============================================================
+-- HELPERS UI
+-- ============================================================
+
+local function tween(obj, props, duration, style, direction)
+    return TweenService:Create(
+        obj,
+        TweenInfo.new(
+            duration or 0.18,
+            style or Enum.EasingStyle.Quad,
+            direction or Enum.EasingDirection.Out
+        ),
+        props
+    )
 end
 
-local function formatarNumero(numero)
-
-	numero = tonumber(numero) or 0
-
-	local negativo = numero < 0
-	local absoluto = math.abs(numero)
-
-	for _, unidade in ipairs(UNIDADES) do
-
-		if absoluto >= unidade[1] then
-
-			-- O jogo trunca em 1 casa (não arredonda pra cima);
-			-- fazemos igual pra bater com o modal.
-			local valor = math.floor((absoluto / unidade[1]) * 10) / 10
-
-			local texto = string.format("%.1f", valor)
-				:gsub("%.0$", "")
-
-			return (negativo and "-" or "") .. texto .. unidade[2]
-
-		end
-
-	end
-
-	return (negativo and "-" or "") .. tostring(math.floor(absoluto + 0.5))
-
+local function make(className, props, parent)
+    local obj = Instance.new(className)
+    for key, value in pairs(props or {}) do
+        obj[key] = value
+    end
+    if parent then
+        obj.Parent = parent
+    end
+    return obj
 end
 
-local function parseAbreviado(texto)
-
-	if not texto then
-		return nil
-	end
-
-	local numeroStr, sufixo = texto:match("(%-?%d+[%.,]?%d*)%s*(%a*)")
-
-	if not numeroStr then
-		return nil
-	end
-
-	local numero = tonumber((numeroStr:gsub(",", ".")))
-
-	if not numero then
-		return nil
-	end
-
-	if sufixo == "" then
-		return numero
-	end
-
-	local mult = UNIDADES_POR_SUFIXO[sufixo:lower()]
-
-	if mult then
-		return numero * mult
-	end
-
-	-- Sufixo não reconhecido (ex: a palavra "Tokens" colada):
-	-- trata como número puro em vez de descartar a leitura.
-	return numero
-
+local function addTextStroke(obj, color, thickness, transparency)
+    local s = Instance.new("UIStroke")
+    s.Color = color or Color3.fromRGB(0, 0, 0)
+    s.Thickness = thickness or 1
+    s.Transparency = transparency or 0
+    s.Parent = obj
+    return s
 end
 
-local function formatarTempo(segundos)
-	segundos = math.max(0, math.floor(segundos))
-	local m = math.floor(segundos / 60)
-	local s = segundos % 60
-	return ("%02d:%02d"):format(m, s)
+local function addCorner(obj, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius or 8)
+    c.Parent = obj
+    return c
 end
 
-local function horaAgora()
-	return os.date("%H:%M:%S")
+local function disconnect(conn)
+    if conn then
+        pcall(function()
+            conn:Disconnect()
+        end)
+    end
 end
 
--- =========================================================
---                  DRIVER ÚNICO DE RAINBOW
--- =========================================================
--- Um RenderStepped só para todos os elementos rainbow do mod.
+local function disconnectList(list)
+    for key, conn in pairs(list) do
+        disconnect(conn)
+        list[key] = nil
+    end
+end
+
+local function isSystemGui(obj)
+    if not obj:IsA("GuiObject") then
+        return true
+    end
+
+    local root = obj:FindFirstAncestorOfClass("ScreenGui")
+    if not root then
+        return true
+    end
+
+    if SYSTEM_PREFIXES[root.Name] then
+        return true
+    end
+
+    if root.Name == "SamModsNotifyV3" then
+        return true
+    end
+
+    if root.Name == "SamModsUIEditor" then
+        return true
+    end
+
+    return false
+end
+
+-- ============================================================
+-- RAINBOW DRIVER
+-- ============================================================
 
 local Rainbow = {}
 
 do
-	local inscritos = {}
-	local hue = 0
+    local subscribers = {}
+    local hue = 0
+    local connection
 
-	jan:add(RunService.RenderStepped:Connect(function(dt)
+    connection = RunService.RenderStepped:Connect(function(dt)
+        hue = (hue + dt * CONFIG.RainbowSpeed) % 1
+        local color = Color3.fromHSV(hue, 1, 1)
 
-		hue = (hue + dt * CONFIG.rainbowVelocidade) % 1
-		local cor = Color3.fromHSV(hue, 1, 1)
+        for obj, callback in pairs(subscribers) do
+            if typeof(obj) ~= "Instance" or obj.Parent == nil then
+                subscribers[obj] = nil
+            else
+                local ok = pcall(callback, color)
+                if not ok then
+                    subscribers[obj] = nil
+                end
+            end
+        end
+    end)
 
-		for obj, aplicar in pairs(inscritos) do
-			if typeof(obj) == "Instance" and obj.Parent == nil then
-				inscritos[obj] = nil
-			else
-				local ok = pcall(aplicar, cor)
-				if not ok then
-					inscritos[obj] = nil
-				end
-			end
-		end
+    function Rainbow.add(obj, callback)
+        subscribers[obj] = callback
+    end
 
-	end))
+    function Rainbow.remove(obj)
+        subscribers[obj] = nil
+    end
 
-	function Rainbow.add(obj, aplicar)
-		inscritos[obj] = aplicar
-	end
-
-	function Rainbow.remove(obj)
-		inscritos[obj] = nil
-	end
-
-	function Rainbow.cor()
-		return Color3.fromHSV(hue, 1, 1)
-	end
+    function Rainbow.color()
+        return Color3.fromHSV(hue, 1, 1)
+    end
 end
 
--- =========================================================
---                 ESTADO / CONFIGURAÇÕES VIVAS
--- =========================================================
+-- ============================================================
+-- NOTIFICAÇÕES
+-- ============================================================
 
-local S = {}
+local notifyGui = make("ScreenGui", {
+    Name = "SamModsNotifyV3",
+    ResetOnSpawn = false,
+    IgnoreGuiInset = true,
+    DisplayOrder = 250,
+}, PlayerGui)
 
-for chave, valor in pairs(CONFIG.padroes) do
-	S[chave] = valor
+local notifyHolder = make("Frame", {
+    AnchorPoint = Vector2.new(0.5, 0),
+    Position = UDim2.fromScale(0.5, 0),
+    Size = UDim2.fromOffset(300, 420),
+    BackgroundTransparency = 1,
+}, notifyGui)
+
+make("UIListLayout", {
+    Padding = UDim.new(0, 5),
+    HorizontalAlignment = Enum.HorizontalAlignment.Center,
+    SortOrder = Enum.SortOrder.LayoutOrder,
+}, notifyHolder)
+
+local notifyIndex = 0
+
+local AlertSound = Instance.new("Sound")
+AlertSound.Name = "SamMods_AutoDefenderAlert"
+AlertSound.SoundId = "rbxassetid://171165317"
+AlertSound.Volume = 3
+AlertSound.Looped = true
+AlertSound.Parent = game:GetService("SoundService")
+
+local NotifySound = Instance.new("Sound")
+NotifySound.Name = "SamMods_AutoDefenderNotify"
+NotifySound.SoundId = "rbxassetid://71450094482101"
+NotifySound.Volume = 3
+NotifySound.Parent = game:GetService("SoundService")
+
+local function playSound(sound)
+    pcall(function()
+        sound:Stop()
+        sound.TimePosition = 0
+        sound:Play()
+    end)
 end
 
-local stats = {
-	inicioSessao = os.clock(),
-	tokensIniciais = nil,
-	tokensAtuais = 0,
-	maiorPreco = 0,
-	roubosSofridos = 0,
-	vezesNoMaximo = 0,
+local function notify(options)
+    if not S.notificacoes then
+        return
+    end
+
+    notifyIndex += 1
+
+    local item = make("Frame", {
+        Size = UDim2.fromOffset(300, 54),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        LayoutOrder = notifyIndex,
+    }, notifyHolder)
+
+    local title = make("TextLabel", {
+        Position = UDim2.fromOffset(8, 2),
+        Size = UDim2.new(1, -16, 0, 18),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBlack,
+        TextSize = 12,
+        TextColor3 = options.color or COLORS.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+        Text = options.title or "",
+    }, item)
+
+    local body = make("TextLabel", {
+        Position = UDim2.fromOffset(8, 20),
+        Size = UDim2.new(1, -16, 0, 30),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.Gotham,
+        TextSize = 10,
+        TextWrapped = true,
+        TextColor3 = COLORS.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+        Text = options.text or "",
+    }, item)
+
+    addTextStroke(title, Color3.fromRGB(0, 0, 0), 1.2, 0.1)
+    addTextStroke(body, Color3.fromRGB(0, 0, 0), 1, 0.15)
+
+    local rainbowConn
+    if options.rainbow then
+        rainbowConn = RunService.RenderStepped:Connect(function()
+            if not item.Parent then
+                disconnect(rainbowConn)
+                return
+            end
+            title.TextColor3 = Rainbow.color()
+        end)
+    end
+
+    if options.sound ~= false then
+        playSound(NotifySound)
+    end
+
+    task.delay(options.duration or 4.5, function()
+        disconnect(rainbowConn)
+        if item.Parent then
+            item:Destroy()
+        end
+    end)
+end
+
+-- ============================================================
+-- CHAT
+-- ============================================================
+
+local function sendChat(text)
+    text = text or CONFIG.MaxMessage
+
+    if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+        local channels = TextChatService:FindFirstChild("TextChannels")
+        local general = channels and channels:FindFirstChild("RBXGeneral")
+
+        if general then
+            local ok = pcall(function()
+                general:SendAsync(text)
+            end)
+
+            if ok then
+                return true
+            end
+        end
+    end
+
+    return pcall(function()
+        StarterGui:SetCore("ChatMakeSystemMessage", {
+            Text = text,
+            Font = Enum.Font.GothamBold,
+            TextSize = 18,
+        })
+    end)
+end
+
+local function tryAutoChat()
+    if not S.avisoChatAuto then
+        return false
+    end
+
+    local now = os.clock()
+    if now - lastChatMessageAt < CONFIG.ChatCooldown then
+        return false
+    end
+
+    lastChatMessageAt = now
+    sendChat(CONFIG.MaxMessage)
+    return true
+end
+
+-- ============================================================
+-- TOKENS / LOJA
+-- ============================================================
+
+local UNITS = {
+    {1e63, "Vg"},
+    {1e60, "Nod"},
+    {1e57, "Ocd"},
+    {1e54, "Spd"},
+    {1e51, "Sxd"},
+    {1e48, "Qid"},
+    {1e45, "Qad"},
+    {1e42, "Td"},
+    {1e39, "Dd"},
+    {1e36, "Ud"},
+    {1e33, "Dc"},
+    {1e30, "No"},
+    {1e27, "Oc"},
+    {1e24, "Sp"},
+    {1e21, "Sx"},
+    {1e18, "Qi"},
+    {1e15, "Qa"},
+    {1e12, "T"},
+    {1e9, "B"},
+    {1e6, "M"},
+    {1e3, "K"},
 }
 
-local historicoPreco = {}
-local logRoubos = {}
-
--- =========================================================
---                    INTRO "SamMods"
--- =========================================================
--- Roda em paralelo com o resto (não trava nada) e some sozinha.
-
-local function rodarIntro()
-
-	local introGui = novo("ScreenGui", {
-		Name = "SamModsIntroGui",
-		ResetOnSpawn = false,
-		IgnoreGuiInset = true,
-		DisplayOrder = 1000,
-	}, PlayerGui)
-
-	jan:add(introGui)
-
-	local viva = true
-
-	local bg = novo("Frame", {
-		Name = "Background",
-		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = Color3.fromRGB(5, 5, 8),
-		BorderSizePixel = 0,
-		ZIndex = 1,
-	}, introGui)
-
-	local vinheta = novo("ImageLabel", {
-		Size = UDim2.fromScale(1, 1),
-		BackgroundTransparency = 1,
-		Image = "rbxassetid://5028857084",
-		ImageTransparency = 1,
-		ScaleType = Enum.ScaleType.Stretch,
-		ZIndex = 2,
-	}, bg)
-
-	local skip = novo("TextButton", {
-		Name = "SkipIntroButton",
-		AnchorPoint = Vector2.new(1, 1),
-		Position = UDim2.new(1, -20, 1, -20),
-		Size = UDim2.fromOffset(110, 34),
-		BackgroundColor3 = CORES.Texto,
-		BackgroundTransparency = 0.85,
-		BorderSizePixel = 0,
-		AutoButtonColor = false,
-		Font = Enum.Font.GothamBold,
-		TextSize = 13,
-		TextColor3 = CORES.Texto,
-		Text = "Pular ⏭",
-		ZIndex = 2000,
-	}, introGui)
-
-	cantos(skip, 8)
-	contorno(skip, CORES.Texto, 1, 0.6)
-
-	local titulo = novo("Frame", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0.42, 0),
-		Size = UDim2.fromOffset(700, 160),
-		BackgroundTransparency = 1,
-		ZIndex = 5,
-	}, bg)
-
-	local function textoTitulo(nome, tamanho, cor, z)
-		return novo("TextLabel", {
-			Name = nome,
-			Size = UDim2.fromScale(1, 1),
-			BackgroundTransparency = 1,
-			Font = Enum.Font.GothamBlack,
-			TextSize = tamanho,
-			TextColor3 = cor,
-			TextTransparency = 1,
-			Text = CONFIG.introTitulo,
-			ZIndex = z,
-		}, titulo)
-	end
-
-	local glitch1 = textoTitulo("GlitchA", 72, Color3.fromRGB(255, 255, 255), 4)
-	local glitch2 = textoTitulo("GlitchB", 72, Color3.fromRGB(20, 20, 20), 4)
-	local principal = textoTitulo("MainTitle", 72, CORES.Texto, 6)
-	local glow = textoTitulo("Glow", 74, CORES.Texto, 3)
-
-	principal.TextStrokeTransparency = 1
-	principal.TextStrokeColor3 = CORES.Texto
-
-	local subtitulo = novo("TextLabel", {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 1, 6),
-		Size = UDim2.new(1, 0, 0, 28),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.Gotham,
-		TextSize = 18,
-		TextColor3 = Color3.fromRGB(200, 200, 205),
-		TextTransparency = 1,
-		Text = CONFIG.introSubtitulo,
-		ZIndex = 6,
-	}, titulo)
-
-	local linha = novo("Frame", {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 1, 40),
-		Size = UDim2.new(0, 0, 0, 2),
-		BackgroundColor3 = CORES.Texto,
-		BackgroundTransparency = 0.3,
-		BorderSizePixel = 0,
-		ZIndex = 6,
-	}, titulo)
-
-	local carregando = novo("Frame", {
-		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -70),
-		Size = UDim2.fromOffset(360, 40),
-		BackgroundTransparency = 1,
-		ZIndex = 5,
-	}, bg)
-
-	local labelCarregando = novo("TextLabel", {
-		Size = UDim2.new(1, 0, 0, 16),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.GothamMedium,
-		TextSize = 12,
-		TextColor3 = Color3.fromRGB(180, 180, 190),
-		TextTransparency = 1,
-		Text = "CARREGANDO...",
-		TextXAlignment = Enum.TextXAlignment.Left,
-		ZIndex = 6,
-	}, carregando)
-
-	local labelPercent = novo("TextLabel", {
-		Size = UDim2.new(1, 0, 0, 16),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.GothamBold,
-		TextSize = 12,
-		TextColor3 = CORES.Texto,
-		TextTransparency = 1,
-		Text = "0%",
-		TextXAlignment = Enum.TextXAlignment.Right,
-		ZIndex = 6,
-	}, carregando)
-
-	local barraFundo = novo("Frame", {
-		Position = UDim2.new(0, 0, 0, 22),
-		Size = UDim2.new(1, 0, 0, 4),
-		BackgroundColor3 = Color3.fromRGB(40, 40, 45),
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		ZIndex = 5,
-	}, carregando)
-
-	cantos(barraFundo, 99)
-
-	local barraFill = novo("Frame", {
-		Size = UDim2.new(0, 0, 1, 0),
-		BackgroundColor3 = CORES.Texto,
-		BorderSizePixel = 0,
-		ZIndex = 6,
-	}, barraFundo)
-
-	cantos(barraFill, 99)
-	contorno(barraFill, CORES.Texto, 1.5, 0.5)
-
-	local particulasPai = novo("Frame", {
-		Size = UDim2.fromScale(1, 1),
-		BackgroundTransparency = 1,
-		ZIndex = 2,
-	}, bg)
-
-	local particulas = {}
-
-	for i = 1, 24 do
-		particulas[i] = novo("Frame", {
-			Size = UDim2.fromOffset(math.random(1, 3), math.random(1, 3)),
-			Position = UDim2.new(math.random(), 0, math.random(), 0),
-			BackgroundColor3 = CORES.Texto,
-			BackgroundTransparency = 1,
-			BorderSizePixel = 0,
-			ZIndex = 2,
-		}, particulasPai)
-	end
-
-	local scanline = novo("Frame", {
-		Size = UDim2.new(1, 0, 0, 2),
-		BackgroundColor3 = CORES.Texto,
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		ZIndex = 7,
-	}, bg)
-
-	local function fechar()
-		if not viva then
-			return
-		end
-		viva = false
-		if introGui.Parent then
-			introGui:Destroy()
-		end
-	end
-
-	skip.MouseButton1Click:Connect(fechar)
-
-	task.spawn(function()
-
-		tween(vinheta, { ImageTransparency = 0.8 }, 1.2)
-
-		for i, p in ipairs(particulas) do
-			task.delay(i * 0.02, function()
-				if not viva then
-					return
-				end
-				tween(p, { BackgroundTransparency = math.random(60, 85) / 100 }, 0.6)
-				task.spawn(function()
-					while viva and p.Parent do
-						local destino = UDim2.new(p.Position.X.Scale, 0, p.Position.Y.Scale - 0.15, 0)
-						local t = tween(p, { Position = destino }, math.random(4, 8), Enum.EasingStyle.Linear)
-						t.Completed:Wait()
-						if not (viva and p.Parent) then
-							break
-						end
-						p.Position = UDim2.new(math.random(), 0, 1.05, 0)
-					end
-				end)
-			end)
-		end
-
-		task.wait(0.5)
-		if not viva then return end
-
-		scanline.Position = UDim2.new(0, 0, -0.05, 0)
-		scanline.BackgroundTransparency = 0.4
-		tween(scanline, { Position = UDim2.new(0, 0, 1.05, 0) }, 0.5, Enum.EasingStyle.Linear)
-
-		task.wait(0.55)
-		if not viva then return end
-		scanline.BackgroundTransparency = 1
-
-		glitch1.TextTransparency = 0.6
-		glitch2.TextTransparency = 0.6
-
-		task.spawn(function()
-			local fim = os.clock() + 1.0
-			while viva and os.clock() < fim do
-				glitch1.Position = UDim2.fromOffset(math.random(-6, 6), math.random(-3, 3))
-				glitch2.Position = UDim2.fromOffset(math.random(-6, 6), math.random(-3, 3))
-				task.wait(0.04)
-			end
-			if not viva then return end
-			glitch1.Position = UDim2.fromOffset(2, 0)
-			glitch2.Position = UDim2.fromOffset(-2, 0)
-			tween(glitch1, { TextTransparency = 0.85 }, 0.3)
-			tween(glitch2, { TextTransparency = 0.85 }, 0.3)
-		end)
-
-		tween(glow, { TextTransparency = 0.55 }, 0.4)
-
-		task.spawn(function()
-			while viva and glow.Parent do
-				tween(glow, { TextTransparency = 0.35 }, 0.8, Enum.EasingStyle.Sine)
-				task.wait(0.8)
-				tween(glow, { TextTransparency = 0.6 }, 0.8, Enum.EasingStyle.Sine)
-				task.wait(0.8)
-			end
-		end)
-
-		task.wait(0.2)
-		if not viva then return end
-
-		task.spawn(function()
-			local passos = {
-				{ 0, 0.05 }, { 1, 0.03 }, { 0.2, 0.05 }, { 1, 0.04 },
-				{ 0, 0.06 }, { 0.6, 0.05 }, { 0, 0.07 }, { 1, 0.05 },
-				{ 0.1, 0.05 }, { 0, 0.09 },
-			}
-			for _, passo in ipairs(passos) do
-				if not viva then return end
-				principal.TextTransparency = passo[1]
-				task.wait(passo[2])
-			end
-			if viva then
-				tween(principal, { TextTransparency = 0 }, 0.15)
-			end
-		end)
-
-		tween(principal, { TextStrokeTransparency = 0.4 }, 1.0)
-
-		local escala = novo("UIScale", {}, titulo)
-
-		task.spawn(function()
-			while viva and titulo.Parent do
-				tween(escala, { Scale = 1.04 }, 0.9, Enum.EasingStyle.Sine)
-				task.wait(0.9)
-				tween(escala, { Scale = 1 }, 0.9, Enum.EasingStyle.Sine)
-				task.wait(0.9)
-			end
-		end)
-
-		task.wait(1.0)
-		if not viva then return end
-
-		tween(linha, { Size = UDim2.new(0, 220, 0, 2) }, 0.5)
-
-		task.wait(0.3)
-		if not viva then return end
-
-		tween(subtitulo, { TextTransparency = 0.15 }, 0.5)
-
-		task.wait(0.4)
-		if not viva then return end
-
-		tween(labelCarregando, { TextTransparency = 0.3 }, 0.4)
-		tween(labelPercent, { TextTransparency = 0 }, 0.4)
-		tween(barraFundo, { BackgroundTransparency = 0.5 }, 0.4)
-
-		task.wait(0.2)
-
-		local duracao = 1.8
-		local inicio = os.clock()
-
-		while viva and os.clock() - inicio < duracao do
-			local progresso = math.min(1, (os.clock() - inicio) / duracao)
-			barraFill.Size = UDim2.new(progresso, 0, 1, 0)
-			labelPercent.Text = ("%d%%"):format(math.floor(progresso * 100))
-			task.wait(0.02)
-		end
-
-		if not viva then return end
-
-		barraFill.Size = UDim2.new(1, 0, 1, 0)
-		labelPercent.Text = "100%"
-
-		task.wait(0.4)
-		if not viva then return end
-
-		for _, alvo in ipairs({
-			{ labelCarregando, { TextTransparency = 1 } },
-			{ labelPercent, { TextTransparency = 1 } },
-			{ barraFundo, { BackgroundTransparency = 1 } },
-			{ barraFill, { BackgroundTransparency = 1 } },
-			{ subtitulo, { TextTransparency = 1 } },
-			{ linha, { BackgroundTransparency = 1 } },
-			{ principal, { TextTransparency = 1, TextStrokeTransparency = 1 } },
-			{ glow, { TextTransparency = 1 } },
-			{ glitch1, { TextTransparency = 1 } },
-			{ glitch2, { TextTransparency = 1 } },
-		}) do
-			tween(alvo[1], alvo[2], 0.4)
-		end
-
-		task.wait(0.5)
-		if not viva then return end
-
-		tween(bg, { BackgroundTransparency = 1 }, 0.8)
-
-		task.wait(0.9)
-		fechar()
-
-	end)
-
+local UNIT_MULTIPLIERS = {}
+for _, pair in ipairs(UNITS) do
+    UNIT_MULTIPLIERS[pair[2]:lower()] = pair[1]
 end
 
-if CONFIG.mostrarIntro then
-	task.spawn(rodarIntro)
+local function formatNumber(number)
+    number = tonumber(number) or 0
+
+    local negative = number < 0
+    local absolute = math.abs(number)
+
+    for _, pair in ipairs(UNITS) do
+        if absolute >= pair[1] then
+            local value = math.floor((absolute / pair[1]) * 10) / 10
+            local text = string.format("%.1f", value):gsub("%.0$", "")
+            return (negative and "-" or "") .. text .. pair[2]
+        end
+    end
+
+    return (negative and "-" or "") .. tostring(math.floor(absolute + 0.5))
 end
 
--- =========================================================
---                LEITURA REAL DOS TOKENS
--- =========================================================
--- Lê do próprio HUD do jogo:
--- PlayerGui > HUD > Spendables > TokenRow > Tokens
+local function parseShort(text)
+    if not text then
+        return nil
+    end
+
+    local numberText, suffix =
+        text:match("(%-?%d+[%.,]?%d*)%s*(%a*)")
+
+    if not numberText then
+        return nil
+    end
+
+    local number = tonumber(numberText:gsub(",", "."))
+    if not number then
+        return nil
+    end
+
+    if suffix == "" then
+        return number
+    end
+
+    local multiplier = UNIT_MULTIPLIERS[suffix:lower()]
+    if multiplier then
+        return number * multiplier
+    end
+
+    return number
+end
 
 local tokensLabel
 
 task.spawn(function()
+    local ok, result = pcall(function()
+        local hud = PlayerGui:WaitForChild("HUD", 15)
+        local spendables = hud:WaitForChild("Spendables", 15)
+        local tokenRow = spendables:WaitForChild("TokenRow", 15)
+        return tokenRow:WaitForChild("Tokens", 15)
+    end)
 
-	local ok, resultado = pcall(function()
-		local hud = PlayerGui:WaitForChild("HUD", 15)
-		local spendables = hud:WaitForChild("Spendables", 15)
-		local tokenRow = spendables:WaitForChild("TokenRow", 15)
-		return tokenRow:WaitForChild("Tokens", 15)
-	end)
-
-	if ok and resultado then
-		tokensLabel = resultado
-	else
-		warn("[SamMods] HUD.Spendables.TokenRow.Tokens não encontrado; usando o atributo Tokens como fallback.")
-	end
-
+    if ok then
+        tokensLabel = result
+    end
 end)
 
-local function lerTokens()
+local function readTokens()
+    if tokensLabel and tokensLabel.Parent then
+        local value = parseShort(tokensLabel.Text)
+        if value then
+            return value
+        end
+    end
 
-	if tokensLabel and tokensLabel.Parent then
-		local valor = parseAbreviado(tokensLabel.Text)
-		if valor then
-			return valor
-		end
-	end
-
-	return tonumber(LocalPlayer:GetAttribute("Tokens")) or 0
-
+    return tonumber(LocalPlayer:GetAttribute("Tokens")) or 0
 end
 
--- =========================================================
---                  CONFIGURAÇÕES DO JOGO
--- =========================================================
+local function startMaxEffect()
+    if shopMaxActive then
+        return
+    end
 
-local Shared = ReplicatedStorage:WaitForChild("Shared")
-local Config = require(Shared:WaitForChild("Config"))
-local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+    shopMaxActive = true
+    stats.vezesNoMaximo += 1
 
-local OpenTokenExchange = Remotes:FindFirstChild("OpenTokenExchange")
-local HackEvent = Remotes:WaitForChild("HackEvent")
+    if S.efeitosMaximo then
+        maxConnections.render = RunService.RenderStepped:Connect(function()
+            if not shopMaxActive then
+                return
+            end
 
-local PRICE_MIN = math.floor(lerNumero(Config.Tokens.priceMin, 5))
-local PRICE_MAX = math.floor(lerNumero(Config.Tokens.priceMax, 15))
-local PRICE_SPIKE = math.floor(lerNumero(Config.Tokens.spikePrice, 12))
-local PRICE_BASE = math.floor(lerNumero(Config.Tokens.basePrice, 10))
-local EPOCH = math.max(1, math.floor(lerNumero(Config.Tokens.priceEpochSeconds, 30)))
+            local c = Rainbow.color()
+            storePrice.TextColor3 = c
+            storeStatus.TextColor3 = c
+            storeIcon.TextColor3 = c
+        end)
+    end
 
--- =========================================================
---                          SONS
--- =========================================================
+    if S.mostrarNotificacaoMaximo then
+        notify({
+            title = "🌈 LOJA NO MÁXIMO",
+            text = ("$%d por token"):format(CONFIG.PriceMax),
+            color = COLORS.Gold,
+            rainbow = true,
+            duration = 5,
+        })
+    end
 
-local function pegarSom(nome, id, volume, loop)
-
-	local som = SoundService:FindFirstChild(nome)
-
-	if not som then
-		som = novo("Sound", { Name = nome }, SoundService)
-	end
-
-	som.SoundId = id
-	som.Volume = volume
-	som.Looped = loop or false
-
-	return som
-
+    tryAutoChat()
 end
 
-local AlertSound = pegarSom("SamMods_HackAlert", CONFIG.somAlertaId, CONFIG.somAlertaVolume, true)
-local NotifySound = pegarSom("SamMods_Notify", CONFIG.somNotifyId, CONFIG.somNotifyVolume, false)
-
-local function tocar(som)
-	som:Stop()
-	som.TimePosition = 0
-	som:Play()
+local function stopMaxEffect()
+    shopMaxActive = false
+    disconnect(maxConnections.render)
+    maxConnections.render = nil
+    storeIcon.TextColor3 = COLORS.Gold
 end
 
--- =========================================================
---                        UI RAIZ
--- =========================================================
+-- ============================================================
+-- AUTO DEFENDER + ESP
+-- ============================================================
 
-local gui = novo("ScreenGui", {
-	Name = "SamModsMainGui",
-	ResetOnSpawn = false,
-	IgnoreGuiInset = true,
-	DisplayOrder = 10,
-}, PlayerGui)
-
-jan:add(gui)
-
-local container = novo("Frame", {
-	Name = "Container",
-	AnchorPoint = Vector2.new(1, 0),
-	Position = UDim2.new(1, -16, 0, 92),
-	Size = UDim2.fromOffset(CARD_W, CARD_H),
-	BackgroundTransparency = 1,
-	ZIndex = 10,
-}, gui)
-
-novo("UIScale", { Scale = ESCALA_UI }, container)
-
--- ---------------------- Aura externa ----------------------
-
-local aura = novo("Frame", {
-	Name = "MaxAura",
-	Size = UDim2.fromScale(1, 1),
-	BackgroundTransparency = 1,
-	BorderSizePixel = 0,
-	Visible = false,
-	ZIndex = 9,
-}, container)
-
-cantos(aura, 14)
-
-local auraStroke = contorno(aura, CORES.Max, 5, 0.75)
-
--- -------------------------- Card --------------------------
-
-local card = novo("TextButton", {
-	Name = "PriceCard",
-	Size = UDim2.fromScale(1, 1),
-	BackgroundColor3 = CORES.Fundo,
-	BackgroundTransparency = 0.25,
-	BorderSizePixel = 0,
-	AutoButtonColor = false,
-	Text = "",
-	ZIndex = 10,
-}, container)
-
-cantos(card, 14)
-
-local cardScale = novo("UIScale", {}, card)
-local cardStroke = contorno(card, CORES.Base, 1.2, 0.8)
-
-novo("UIPadding", {
-	PaddingTop = UDim.new(0, 4),
-	PaddingBottom = UDim.new(0, 4),
-	PaddingLeft = UDim.new(0, 9),
-	PaddingRight = UDim.new(0, 9),
-}, card)
-
-local shine = novo("Frame", {
-	Name = "Shine",
-	BackgroundColor3 = CORES.Texto,
-	BackgroundTransparency = 1,
-	BorderSizePixel = 0,
-	Position = UDim2.new(-0.5, 0, 0, 0),
-	Size = UDim2.new(0.35, 0, 1, 0),
-	Rotation = 15,
-	ZIndex = 11,
-}, card)
-
-novo("UIGradient", {
-	Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 1),
-		NumberSequenceKeypoint.new(0.5, 0.4),
-		NumberSequenceKeypoint.new(1, 1),
-	}),
-}, shine)
-
-local priceLabel = novo("TextLabel", {
-	Name = "PriceLabel",
-	BackgroundTransparency = 1,
-	Position = UDim2.new(0, 0, 0, 2),
-	Size = UDim2.new(0, 100, 0, 18),
-	Font = Enum.Font.GothamBold,
-	TextSize = 15,
-	TextColor3 = CORES.Texto,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	Text = ("💰 $%d"):format(PRICE_BASE),
-	ZIndex = 13,
-}, card)
-
-local earningsLabel = novo("TextLabel", {
-	Name = "EarningsLabel",
-	BackgroundTransparency = 1,
-	Position = UDim2.new(0, 0, 0, 21),
-	Size = UDim2.new(1, 0, 0, 11),
-	Font = Enum.Font.GothamBold,
-	TextSize = 9,
-	TextColor3 = Color3.fromRGB(220, 225, 235),
-	TextXAlignment = Enum.TextXAlignment.Left,
-	Text = "💎 Tokens: 0  •  💰 Receber: $0",
-	ZIndex = 13,
-}, card)
-
-local timerLabel = novo("TextLabel", {
-	Name = "TimerLabel",
-	BackgroundTransparency = 1,
-	Position = UDim2.new(0, 0, 0, 33),
-	Size = UDim2.new(1, 0, 0, 14),
-	Font = Enum.Font.GothamBold,
-	TextSize = 11,
-	TextColor3 = Color3.fromRGB(225, 228, 238),
-	TextXAlignment = Enum.TextXAlignment.Left,
-	Text = "--s",
-	ZIndex = 13,
-}, card)
-
-local statusBadge = novo("TextLabel", {
-	Name = "StatusBadge",
-	AnchorPoint = Vector2.new(1, 0),
-	Position = UDim2.new(1, 0, 0, 2),
-	Size = UDim2.fromOffset(58, 16),
-	BackgroundColor3 = CORES.Base,
-	BackgroundTransparency = 0.2,
-	Font = Enum.Font.GothamBold,
-	TextSize = 9,
-	TextColor3 = CORES.Texto,
-	Text = "NORMAL",
-	ZIndex = 14,
-}, card)
-
-cantos(statusBadge, 4)
-local badgeStroke = contorno(statusBadge, CORES.Base, 1, 0.5)
-
--- --------------- Mini gráfico de histórico ---------------
-
-local sparkline = novo("Frame", {
-	Name = "Sparkline",
-	Position = UDim2.new(0, 0, 0, 48),
-	Size = UDim2.new(1, 0, 0, 12),
-	BackgroundTransparency = 1,
-	ZIndex = 12,
-}, card)
-
-local barrasHistorico = {}
-
-do
-	local n = CONFIG.historicoTamanho
-	local largura = 1 / n
-
-	for i = 1, n do
-		barrasHistorico[i] = novo("Frame", {
-			AnchorPoint = Vector2.new(0, 1),
-			Position = UDim2.new((i - 1) * largura, 0, 1, 0),
-			Size = UDim2.new(largura, -1, 0, 1),
-			BackgroundColor3 = CORES.Base,
-			BackgroundTransparency = 0.55,
-			BorderSizePixel = 0,
-			ZIndex = 12,
-		}, sparkline)
-	end
+local function getCharacter()
+    return LocalPlayer.Character
 end
 
-local function registrarHistorico(preco)
-
-	table.insert(historicoPreco, preco)
-
-	while #historicoPreco > CONFIG.historicoTamanho do
-		table.remove(historicoPreco, 1)
-	end
-
-	local base = #historicoPreco
-	local faixa = math.max(1, PRICE_MAX - PRICE_MIN)
-
-	for i, barra in ipairs(barrasHistorico) do
-
-		local idx = i - (#barrasHistorico - base)
-		local valor = historicoPreco[idx]
-
-		if valor then
-			local prop = math.clamp((valor - PRICE_MIN) / faixa, 0, 1)
-			barra.Size = UDim2.new(barra.Size.X.Scale, -1, 0, 2 + prop * 10)
-			barra.BackgroundTransparency = 0.35
-			barra.BackgroundColor3 =
-				valor >= PRICE_MAX and CORES.Max
-				or valor >= PRICE_SPIKE and CORES.Spike
-				or valor <= PRICE_MIN and CORES.Min
-				or CORES.Base
-		else
-			barra.Size = UDim2.new(barra.Size.X.Scale, -1, 0, 1)
-			barra.BackgroundTransparency = 0.85
-		end
-
-	end
-
+local function getHumanoid()
+    local char = getCharacter()
+    return char and char:FindFirstChildOfClass("Humanoid")
 end
 
--- -------------------- Barra de progresso -------------------
+local function getRoot(player)
+    if not player or not player.Character then
+        return nil
+    end
 
-local progressBackground = novo("Frame", {
-	Name = "ProgressBackground",
-	AnchorPoint = Vector2.new(0, 1),
-	Position = UDim2.new(0, 0, 1, 0),
-	Size = UDim2.new(1, 0, 0, 2),
-	BackgroundColor3 = CORES.Texto,
-	BackgroundTransparency = 0.9,
-	BorderSizePixel = 0,
-	ClipsDescendants = true,
-	ZIndex = 12,
-}, card)
-
-local progressBar = novo("Frame", {
-	Name = "ProgressBar",
-	Size = UDim2.fromScale(1, 1),
-	BackgroundColor3 = CORES.Base,
-	BorderSizePixel = 0,
-	ZIndex = 12,
-}, progressBackground)
-
--- ------------------------ Sparkles -------------------------
-
-local sparkleContainer = novo("Frame", {
-	Name = "Sparkles",
-	BackgroundTransparency = 1,
-	Size = UDim2.fromScale(1, 1),
-	Visible = false,
-	ZIndex = 20,
-}, card)
-
-local sparkles = {}
-
-for i = 1, 8 do
-	sparkles[i] = novo("TextLabel", {
-		Name = "Sparkle_" .. i,
-		BackgroundTransparency = 1,
-		Text = "✦",
-		TextSize = math.random(8, 15),
-		Font = Enum.Font.GothamBold,
-		TextColor3 = CORES.Texto,
-		Visible = false,
-		ZIndex = 21,
-	}, sparkleContainer)
+    return player.Character:FindFirstChild("HumanoidRootPart")
 end
 
--- =========================================================
---                    BOTÕES LATERAIS
--- =========================================================
--- Coluna de botõezinhos à esquerda do card.
+local function getBat()
+    local char = getCharacter()
+    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
 
-local barraBotoes = novo("Frame", {
-	Name = "SideButtons",
-	AnchorPoint = Vector2.new(1, 0),
-	Position = UDim2.new(0, -6, 0, 0),
-	Size = UDim2.fromOffset(BTN_ICONE, BTN_ICONE * 3 + 8),
-	BackgroundTransparency = 1,
-	ZIndex = 15,
-}, container)
+    if char then
+        local tool = char:FindFirstChild(CONFIG.ToolName)
+        if tool and tool:IsA("Tool") then
+            return tool
+        end
+    end
 
-novo("UIListLayout", {
-	Padding = UDim.new(0, 4),
-	HorizontalAlignment = Enum.HorizontalAlignment.Center,
-	SortOrder = Enum.SortOrder.LayoutOrder,
-}, barraBotoes)
+    if backpack then
+        local tool = backpack:FindFirstChild(CONFIG.ToolName)
+        if tool and tool:IsA("Tool") then
+            return tool
+        end
+    end
 
-local function botaoIcone(icone, ordem, dica)
-
-	local b = novo("TextButton", {
-		Name = "Icon_" .. ordem,
-		Size = UDim2.fromOffset(BTN_ICONE, BTN_ICONE),
-		BackgroundColor3 = CORES.Fundo2,
-		BackgroundTransparency = 0.1,
-		AutoButtonColor = false,
-		Font = Enum.Font.GothamBold,
-		TextSize = EH_MOBILE and 16 or 12,
-		Text = icone,
-		TextColor3 = CORES.Texto,
-		LayoutOrder = ordem,
-		ZIndex = 16,
-	}, barraBotoes)
-
-	cantos(b, 6)
-	contorno(b, CORES.Texto, 1, 0.75)
-
-	b.MouseEnter:Connect(function()
-		tween(b, { BackgroundTransparency = 0 }, 0.15)
-	end)
-
-	b.MouseLeave:Connect(function()
-		tween(b, { BackgroundTransparency = 0.1 }, 0.15)
-	end)
-
-	if dica then
-		b.Name = dica
-	end
-
-	return b
-
+    return nil
 end
 
-local btnConfig = botaoIcone("⚙", 1, "BtnConfig")
-local btnSom = botaoIcone("🔔", 2, "BtnSom")
-local btnOlho = botaoIcone("👁", 3, "BtnDiscreto")
+local function equipBat()
+    local humanoid = getHumanoid()
+    local bat = getBat()
 
--- Botão solto que reaparece no modo discreto (no celular não
--- dá pra apertar F1 pra voltar).
-local btnRestaurar = novo("TextButton", {
-	Name = "BtnRestaurar",
-	AnchorPoint = Vector2.new(1, 0),
-	Position = UDim2.new(1, -8, 0, 8),
-	Size = UDim2.fromOffset(BTN_ICONE, BTN_ICONE),
-	BackgroundColor3 = CORES.Fundo,
-	BackgroundTransparency = 0.45,
-	AutoButtonColor = false,
-	Font = Enum.Font.GothamBold,
-	TextSize = EH_MOBILE and 16 or 12,
-	Text = "👁",
-	TextColor3 = CORES.Texto,
-	TextTransparency = 0.35,
-	Visible = false,
-	ZIndex = 40,
-}, gui)
+    if not humanoid or not bat then
+        return false
+    end
 
-cantos(btnRestaurar, 8)
+    if bat.Parent ~= getCharacter() then
+        pcall(function()
+            humanoid:EquipTool(bat)
+        end)
 
--- =========================================================
---             BOTÕES DE AÇÃO CONTRA O LADRÃO
--- =========================================================
+        task.wait(CONFIG.EquipDelay)
+    end
 
-local function botaoLargo(nome, texto, corFundo, y)
+    local equipped =
+        getCharacter()
+        and getCharacter():FindFirstChild(CONFIG.ToolName)
 
-	local b = novo("TextButton", {
-		Name = nome,
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 0, 1, y),
-		Size = UDim2.fromOffset(CARD_W, BTN_ALTURA),
-		BackgroundColor3 = corFundo,
-		BackgroundTransparency = 0.1,
-		BorderSizePixel = 0,
-		AutoButtonColor = false,
-		Font = Enum.Font.GothamBlack,
-		TextSize = EH_MOBILE and 13 or 12,
-		TextColor3 = CORES.Texto,
-		Text = texto,
-		Visible = false,
-		ZIndex = 15,
-	}, container)
-
-	cantos(b, 10)
-
-	return b
-
+    return equipped ~= nil
+        and equipped:IsA("Tool")
 end
 
-local lockButton = botaoLargo("LockOnThief", "🔓 Travar no ladrão", CORES.Fundo2, 8)
-local teleportButton = botaoLargo(
-	"GoToThief",
-	"🏃 Ir até o ladrão",
-	CORES.Perigo,
-	8 + BTN_ALTURA + 4
-)
-
--- =========================================================
---                  PAINEL (CONFIG / LOG / STATS)
--- =========================================================
-
--- O painel é uma janela própria (fora do card), pra não sair
--- da tela quando o card é arrastado e pra caber no celular.
-
-local function tela()
-	local camera = Workspace.CurrentCamera
-	return camera and camera.ViewportSize or Vector2.new(1280, 720)
+local function unequipBat()
+    local humanoid = getHumanoid()
+    if humanoid then
+        pcall(function()
+            humanoid:UnequipTools()
+        end)
+    end
 end
 
-local PAINEL_W, PAINEL_H
-
-local function medirPainel()
-	local vp = tela()
-	PAINEL_W = math.floor(math.min(300, vp.X * 0.9))
-	PAINEL_H = math.floor(math.min(EH_MOBILE and 260 or 300, vp.Y * 0.7))
+local function releaseFromThief()
+    disconnect(followConnection)
+    followConnection = nil
 end
 
-medirPainel()
+local function followThief(thief)
+    releaseFromThief()
 
-local painel = novo("Frame", {
-	Name = "Painel",
-	AnchorPoint = Vector2.new(0.5, 0.5),
-	Position = UDim2.fromScale(0.5, 0.5),
-	Size = UDim2.fromOffset(PAINEL_W, PAINEL_H),
-	BackgroundColor3 = CORES.Fundo,
-	BackgroundTransparency = 0.08,
-	BorderSizePixel = 0,
-	Active = true,
-	Visible = false,
-	ZIndex = 30,
-}, gui)
+    local mine = getRoot(LocalPlayer)
+    local target = getRoot(thief)
 
-cantos(painel, 12)
-contorno(painel, CORES.Base, 1.2, 0.6)
+    if not mine or not target then
+        return false
+    end
 
-novo("UIPadding", {
-	PaddingTop = UDim.new(0, 8),
-	PaddingBottom = UDim.new(0, 8),
-	PaddingLeft = UDim.new(0, 10),
-	PaddingRight = UDim.new(0, 10),
-}, painel)
+    pcall(function()
+        mine.CFrame =
+            target.CFrame
+            * CONFIG.FollowOffset
+    end)
 
--- Barra de título: arrasta a janela e fecha.
-local painelBarra = novo("TextButton", {
-	Name = "Barra",
-	Size = UDim2.new(1, 0, 0, 20),
-	BackgroundTransparency = 1,
-	AutoButtonColor = false,
-	Text = "",
-	ZIndex = 31,
-}, painel)
+    followConnection =
+        RunService.Heartbeat:Connect(function()
+            if not enabled
+                or not robberyActive
+                or currentThief ~= thief then
 
-local painelTitulo = novo("TextLabel", {
-	Size = UDim2.new(1, -26, 1, 0),
-	BackgroundTransparency = 1,
-	Font = Enum.Font.GothamBlack,
-	TextSize = EH_MOBILE and 14 or 12,
-	TextColor3 = CORES.Texto,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	Text = "SamMods • Painel",
-	ZIndex = 32,
-}, painelBarra)
+                releaseFromThief()
+                return
+            end
 
-Rainbow.add(painelTitulo, function(cor)
-	painelTitulo.TextColor3 = cor
-end)
+            local myRoot = getRoot(LocalPlayer)
+            local thiefRoot = getRoot(thief)
 
-local painelFechar = novo("TextButton", {
-	Name = "Fechar",
-	AnchorPoint = Vector2.new(1, 0.5),
-	Position = UDim2.new(1, 0, 0.5, 0),
-	Size = UDim2.fromOffset(22, 22),
-	BackgroundColor3 = CORES.Fundo2,
-	BackgroundTransparency = 0.2,
-	AutoButtonColor = false,
-	Font = Enum.Font.GothamBlack,
-	TextSize = 13,
-	Text = "✕",
-	TextColor3 = CORES.Texto,
-	ZIndex = 32,
-}, painelBarra)
+            if not myRoot or not thiefRoot then
+                releaseFromThief()
+                return
+            end
 
-cantos(painelFechar, 6)
+            pcall(function()
+                myRoot.CFrame =
+                    thiefRoot.CFrame
+                    * CONFIG.FollowOffset
+            end)
+        end)
 
-local abasFrame = novo("Frame", {
-	Position = UDim2.new(0, 0, 0, 24),
-	Size = UDim2.new(1, 0, 0, EH_MOBILE and 28 or 22),
-	BackgroundTransparency = 1,
-	ZIndex = 31,
-}, painel)
-
-novo("UIListLayout", {
-	FillDirection = Enum.FillDirection.Horizontal,
-	Padding = UDim.new(0, 4),
-	SortOrder = Enum.SortOrder.LayoutOrder,
-}, abasFrame)
-
-local conteudoAbas = {}
-local botoesAbas = {}
-local abaAtual = "Config"
-
-local function selecionarAba(nome)
-
-	abaAtual = nome
-
-	for chave, frame in pairs(conteudoAbas) do
-		frame.Visible = (chave == nome)
-	end
-
-	for chave, botao in pairs(botoesAbas) do
-		local ativo = (chave == nome)
-		botao.BackgroundTransparency = ativo and 0.05 or 0.55
-		botao.TextColor3 = ativo and CORES.Texto or CORES.TextoFraco
-	end
-
+    return true
 end
 
-local function criarAba(nome, rotulo, ordem)
+local function fireMelee(thief)
+    if not thief then
+        return false
+    end
 
-	local botao = novo("TextButton", {
-		Name = "Aba_" .. nome,
-		Size = UDim2.new(1 / 3, -3, 1, 0),
-		BackgroundColor3 = CORES.Fundo2,
-		BackgroundTransparency = 0.55,
-		AutoButtonColor = false,
-		Font = Enum.Font.GothamBold,
-		TextSize = EH_MOBILE and 12 or 11,
-		Text = rotulo,
-		TextColor3 = CORES.TextoFraco,
-		LayoutOrder = ordem,
-		ZIndex = 32,
-	}, abasFrame)
+    if not MeleeHit:IsA("RemoteEvent") then
+        return false
+    end
 
-	cantos(botao, 6)
-
-	local conteudo = novo("ScrollingFrame", {
-		Name = "Conteudo_" .. nome,
-		Position = UDim2.new(0, 0, 0, EH_MOBILE and 58 or 52),
-		Size = UDim2.new(1, 0, 1, EH_MOBILE and -58 or -52),
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		ScrollBarThickness = EH_MOBILE and 5 or 3,
-		ScrollBarImageColor3 = CORES.Base,
-		CanvasSize = UDim2.new(0, 0, 0, 0),
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		Visible = false,
-		ZIndex = 31,
-	}, painel)
-
-	novo("UIListLayout", {
-		Padding = UDim.new(0, 4),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-	}, conteudo)
-
-	botoesAbas[nome] = botao
-	conteudoAbas[nome] = conteudo
-
-	botao.MouseButton1Click:Connect(function()
-		selecionarAba(nome)
-	end)
-
-	return conteudo
-
+    return pcall(function()
+        MeleeHit:FireServer(thief)
+    end)
 end
 
-local abaConfig = criarAba("Config", "⚙ Config", 1)
-local abaRoubos = criarAba("Roubos", "🚨 Roubos", 2)
-local abaStats = criarAba("Stats", "📊 Stats", 3)
+local function cleanupThiefESP()
+    disconnectList(thiefEspConnections)
 
--- --------------------- Linhas de config --------------------
+    if thiefEspGui then
+        pcall(function()
+            thiefEspGui:Destroy()
+        end)
+    end
 
-local function linhaToggle(pai, chave, rotulo, ordem, aoMudar)
-
-	local linha = novo("TextButton", {
-		Name = "Toggle_" .. chave,
-		Size = UDim2.new(1, -6, 0, EH_MOBILE and 32 or 26),
-		BackgroundColor3 = CORES.Fundo2,
-		BackgroundTransparency = 0.35,
-		AutoButtonColor = false,
-		Text = "",
-		LayoutOrder = ordem,
-		ZIndex = 32,
-	}, pai)
-
-	cantos(linha, 6)
-
-	novo("TextLabel", {
-		Position = UDim2.new(0, 8, 0, 0),
-		Size = UDim2.new(1, -54, 1, 0),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.GothamMedium,
-		TextSize = EH_MOBILE and 12 or 11,
-		TextColor3 = CORES.Texto,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		Text = rotulo,
-		ZIndex = 33,
-	}, linha)
-
-	local trilho = novo("Frame", {
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -8, 0.5, 0),
-		Size = UDim2.fromOffset(34, 16),
-		BackgroundColor3 = CORES.Fundo,
-		BorderSizePixel = 0,
-		ZIndex = 33,
-	}, linha)
-
-	cantos(trilho, 99)
-
-	local bolinha = novo("Frame", {
-		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 2, 0.5, 0),
-		Size = UDim2.fromOffset(12, 12),
-		BackgroundColor3 = CORES.TextoFraco,
-		BorderSizePixel = 0,
-		ZIndex = 34,
-	}, trilho)
-
-	cantos(bolinha, 99)
-
-	local function pintar()
-		local ligado = S[chave]
-		tween(bolinha, {
-			Position = ligado and UDim2.new(1, -14, 0.5, 0) or UDim2.new(0, 2, 0.5, 0),
-			BackgroundColor3 = ligado and CORES.Ok or CORES.TextoFraco,
-		}, 0.15)
-		tween(trilho, {
-			BackgroundColor3 = ligado and Color3.fromRGB(30, 70, 45) or CORES.Fundo,
-		}, 0.15)
-	end
-
-	linha.MouseButton1Click:Connect(function()
-		S[chave] = not S[chave]
-		pintar()
-		if aoMudar then
-			aoMudar(S[chave])
-		end
-	end)
-
-	pintar()
-
-	return linha
-
+    thiefEspGui = nil
+    if setaLadrao then
+        setaLadrao.Visible = false
+    end
 end
 
-local function linhaTexto(pai, rotulo, ordem)
-
-	local label = novo("TextLabel", {
-		Size = UDim2.new(1, -6, 0, EH_MOBILE and 22 or 20),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.GothamMedium,
-		TextSize = EH_MOBILE and 12 or 11,
-		TextColor3 = CORES.TextoFraco,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		Text = rotulo,
-		LayoutOrder = ordem,
-		ZIndex = 32,
-	}, pai)
-
-	return label
-
+function noop()
 end
 
-local function linhaInput(pai, rotulo, valorInicial, ordem, aoConfirmar)
+local function showThiefESP(player)
+    if not S.espLadrao or not player then
+        return
+    end
 
-	local linha = novo("Frame", {
-		Size = UDim2.new(1, -6, 0, EH_MOBILE and 32 or 26),
-		BackgroundColor3 = CORES.Fundo2,
-		BackgroundTransparency = 0.35,
-		BorderSizePixel = 0,
-		LayoutOrder = ordem,
-		ZIndex = 32,
-	}, pai)
+    cleanupThiefESP()
 
-	cantos(linha, 6)
+    task.spawn(function()
+        local character = player.Character or player.CharacterAdded:Wait()
+        local root = character:WaitForChild("HumanoidRootPart", 5)
 
-	novo("TextLabel", {
-		Position = UDim2.new(0, 8, 0, 0),
-		Size = UDim2.new(0.55, -8, 1, 0),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.GothamMedium,
-		TextSize = EH_MOBILE and 12 or 11,
-		TextColor3 = CORES.Texto,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		Text = rotulo,
-		ZIndex = 33,
-	}, linha)
+        if not root
+            or not robberyActive
+            or currentThief ~= player then
+            return
+        end
 
-	local caixa = novo("TextBox", {
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -6, 0.5, 0),
-		Size = UDim2.new(0.4, 0, 0, EH_MOBILE and 24 or 18),
-		BackgroundColor3 = CORES.Fundo,
-		BorderSizePixel = 0,
-		Font = Enum.Font.GothamBold,
-		TextSize = EH_MOBILE and 12 or 11,
-		TextColor3 = CORES.Texto,
-		Text = tostring(valorInicial),
-		ClearTextOnFocus = false,
-		PlaceholderText = "0 = off",
-		ZIndex = 33,
-	}, linha)
+        local highlight = Instance.new("Highlight")
+        highlight.FillTransparency = 0.78
+        highlight.OutlineTransparency = 0
+        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        highlight.Parent = character
 
-	cantos(caixa, 4)
+        local billboard = Instance.new("BillboardGui")
+        billboard.Name = "SamModsThiefESP"
+        billboard.Adornee = root
+        billboard.Size = UDim2.fromOffset(88, 92)
+        billboard.StudsOffset = Vector3.new(0, 3.1, 0)
+        billboard.AlwaysOnTop = true
+        billboard.MaxDistance = 500
+        billboard.Parent = character
 
-	caixa.FocusLost:Connect(function(enter)
-		if enter then
-			aoConfirmar(parseAbreviado(caixa.Text) or 0)
-		end
-	end)
+        thiefEspGui = billboard
 
-	return caixa
+        local avatar = make("ImageLabel", {
+            AnchorPoint = Vector2.new(0.5, 0),
+            Position = UDim2.new(0.5, 0, 0, 0),
+            Size = UDim2.fromOffset(42, 42),
+            BackgroundTransparency = 1,
+            Image = ("rbxthumb://type=AvatarHeadShot&id=%d&w=100&h=100"):format(player.UserId),
+        }, billboard)
+        addTextStroke(avatar, Color3.fromRGB(255, 255, 255), 1.5, 0)
 
+        local name = make("TextLabel", {
+            AnchorPoint = Vector2.new(0.5, 0),
+            Position = UDim2.new(0.5, 0, 0, 44),
+            Size = UDim2.new(1.6, 0, 0, 18),
+            BackgroundTransparency = 1,
+            Font = Enum.Font.GothamBlack,
+            TextSize = 12,
+            Text = "🚨 " .. player.Name,
+            TextColor3 = COLORS.Text,
+        }, billboard)
+        addTextStroke(name, Color3.fromRGB(0, 0, 0), 1.4, 0)
+
+        local distance = make("TextLabel", {
+            AnchorPoint = Vector2.new(0.5, 0),
+            Position = UDim2.new(0.5, 0, 0, 62),
+            Size = UDim2.new(1.6, 0, 0, 14),
+            BackgroundTransparency = 1,
+            Font = Enum.Font.GothamBold,
+            TextSize = 9,
+            Text = "-- studs",
+            TextColor3 = COLORS.Text,
+        }, billboard)
+        addTextStroke(distance, Color3.fromRGB(0, 0, 0), 1, 0)
+
+        thiefEspConnections.rainbow =
+            RunService.RenderStepped:Connect(function()
+                if not billboard.Parent then
+                    return
+                end
+
+                local c = Rainbow.color()
+
+                highlight.OutlineColor = c
+                highlight.FillColor = c
+                name.TextColor3 = c
+            end)
+
+        thiefEspConnections.distance =
+            RunService.Heartbeat:Connect(function()
+                local myRoot = getRoot(LocalPlayer)
+                local thiefRoot = character:FindFirstChild("HumanoidRootPart")
+
+                if myRoot and thiefRoot then
+                    distance.Text = ("%d studs"):format(
+                        math.floor(
+                            (myRoot.Position - thiefRoot.Position).Magnitude
+                        )
+                    )
+                end
+            end)
+    end)
 end
 
--- =========================================================
---                  FILA DE NOTIFICAÇÕES
--- =========================================================
--- Empilha em vez de sobrescrever (a v1 tinha um frame só).
-
-local notifyGui = novo("ScreenGui", {
-	Name = "SamModsNotifyGui",
-	ResetOnSpawn = false,
-	IgnoreGuiInset = true,
-	DisplayOrder = 200,
-}, PlayerGui)
-
-jan:add(notifyGui)
-
-local notifyPilha = novo("Frame", {
-	AnchorPoint = Vector2.new(0.5, 0),
-	Position = UDim2.new(0.5, 0, 0, 16),
-	Size = UDim2.fromOffset(330, 400),
-	BackgroundTransparency = 1,
-	ZIndex = 200,
-}, notifyGui)
-
-novo("UIListLayout", {
-	Padding = UDim.new(0, 6),
-	HorizontalAlignment = Enum.HorizontalAlignment.Center,
-	SortOrder = Enum.SortOrder.LayoutOrder,
-}, notifyPilha)
-
-local notifyOrdem = 0
-
---[[
-	opcoes = {
-		titulo, texto, imagem, cor, duracao,
-		rainbow (bool), som (bool)
-	}
-]]
-local function notificar(opcoes)
-
-	if not S.notificacoes then
-		return
-	end
-
-	notifyOrdem += 1
-
-	local frame = novo("Frame", {
-		Name = "Notif_" .. notifyOrdem,
-		Size = UDim2.fromOffset(330, 60),
-		BackgroundColor3 = CORES.Fundo,
-		BackgroundTransparency = 0.1,
-		BorderSizePixel = 0,
-		LayoutOrder = notifyOrdem,
-		ZIndex = 201,
-	}, notifyPilha)
-
-	cantos(frame, 10)
-
-	local borda = contorno(frame, opcoes.cor or CORES.Base, 1.5, 0.25)
-
-	if opcoes.rainbow then
-		Rainbow.add(borda, function(cor)
-			borda.Color = cor
-		end)
-	end
-
-	local esquerdaX = 10
-
-	if opcoes.imagem then
-
-		local foto = novo("ImageLabel", {
-			AnchorPoint = Vector2.new(0, 0.5),
-			Position = UDim2.new(0, 8, 0.5, 0),
-			Size = UDim2.fromOffset(44, 44),
-			BackgroundColor3 = Color3.fromRGB(10, 10, 14),
-			Image = opcoes.imagem,
-			ZIndex = 202,
-		}, frame)
-
-		cantos(foto, 99)
-
-		local fotoStroke = contorno(foto, opcoes.cor or CORES.Base, 1.5, 0.2)
-
-		if opcoes.rainbow then
-			Rainbow.add(fotoStroke, function(cor)
-				fotoStroke.Color = cor
-			end)
-		end
-
-		esquerdaX = 60
-
-	end
-
-	novo("TextLabel", {
-		Position = UDim2.new(0, esquerdaX, 0, 8),
-		Size = UDim2.new(1, -esquerdaX - 10, 0, 18),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.GothamBlack,
-		TextSize = 13,
-		TextColor3 = CORES.Texto,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-		Text = opcoes.titulo or "",
-		ZIndex = 202,
-	}, frame)
-
-	novo("TextLabel", {
-		Position = UDim2.new(0, esquerdaX, 0, 26),
-		Size = UDim2.new(1, -esquerdaX - 10, 0, 28),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.Gotham,
-		TextSize = 12,
-		TextWrapped = true,
-		TextColor3 = Color3.fromRGB(215, 220, 230),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextYAlignment = Enum.TextYAlignment.Top,
-		Text = opcoes.texto or "",
-		ZIndex = 202,
-	}, frame)
-
-	if opcoes.som ~= false then
-		tocar(NotifySound)
-	end
-
-	frame.BackgroundTransparency = 1
-	frame.Position = UDim2.new(0, 40, 0, 0)
-	tween(frame, { BackgroundTransparency = 0.1 }, 0.25)
-
-	task.delay(opcoes.duracao or 4.5, function()
-		if frame.Parent then
-			local saida = tween(frame, { BackgroundTransparency = 1 }, 0.3)
-			saida.Completed:Wait()
-			if frame.Parent then
-				frame:Destroy()
-			end
-		end
-	end)
-
-	return frame
-
+local function stopDefense()
+    releaseFromThief()
+    cleanupThiefESP()
+    currentThief = nil
+    unequipBat()
 end
 
--- =========================================================
---                   MENSAGEM NO CHAT
--- =========================================================
+local function oneAttempt(thief)
+    if not enabled
+        or not robberyActive
+        or not thief then
+        return
+    end
 
-local CHAT_COOLDOWN_ATTR = "SamMods_LastChatMessage"
+    if thief.Parent ~= Players
+        or not getRoot(thief) then
+        return
+    end
 
-local function enviarMensagemChat(texto)
+    if not equipBat() then
+        return
+    end
 
-	texto = texto or CONFIG.mensagemMaximo
+    if not followThief(thief) then
+        return
+    end
 
-	if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+    local started = os.clock()
 
-		local canais = TextChatService:FindFirstChild("TextChannels")
-		local geral = canais and canais:FindFirstChild("RBXGeneral")
+    while enabled
+        and robberyActive
+        and currentThief == thief
+        and os.clock() - started < CONFIG.AttemptDuration do
 
-		if geral then
-			local ok = pcall(function()
-				geral:SendAsync(texto)
-			end)
-			if ok then
-				return true
-			end
-		end
+        if not getRoot(thief) then
+            break
+        end
 
-	end
+        fireMelee(thief)
+        task.wait(CONFIG.MeleeInterval)
+    end
 
-	local ok = pcall(function()
-		StarterGui:SetCore("ChatMakeSystemMessage", {
-			Text = texto,
-			Font = Enum.Font.GothamBold,
-			TextSize = 18,
-		})
-	end)
+    if not enabled or not robberyActive then
+        stopDefense()
+        return
+    end
 
-	return ok
-
+    releaseFromThief()
 end
 
--- Retorna: enviou (bool), segundosRestantes (number)
-local function tentarEnviarMensagem()
+local function startDefenseLoop()
+    if defenseThread
+        or not enabled
+        or not robberyActive
+        or not currentThief then
+        return
+    end
 
-	local agora = os.clock()
-	local ultimo = PlayerGui:GetAttribute(CHAT_COOLDOWN_ATTR) or -math.huge
-	local passou = agora - ultimo
+    defenseThread =
+        task.spawn(function()
 
-	if passou >= CONFIG.chatCooldown then
-		PlayerGui:SetAttribute(CHAT_COOLDOWN_ATTR, agora)
-		enviarMensagemChat()
-		return true, 0
-	end
+            while enabled
+                and robberyActive
+                and currentThief do
 
-	return false, math.ceil(CONFIG.chatCooldown - passou)
+                local thief = currentThief
 
+                if thief.Parent ~= Players then
+                    break
+                end
+
+                oneAttempt(thief)
+
+                if not enabled
+                    or not robberyActive
+                    or currentThief ~= thief then
+                    break
+                end
+
+                task.wait(CONFIG.RetryDelay)
+            end
+
+            defenseThread = nil
+
+            if not robberyActive
+                or not enabled then
+
+                releaseFromThief()
+                unequipBat()
+            end
+        end)
 end
 
--- =========================================================
---                    ARRASTAR O PAINEL
--- =========================================================
--- Clique curto = abrir a loja. Clique com movimento = arrastar.
+local function resolveThief(data)
+    if typeof(data) ~= "table" then
+        return nil
+    end
 
-local POSICAO_ATTR = "SamMods_PosicaoPainel"
+    for _, id in ipairs({
+        tonumber(data.userId),
+        tonumber(data.attackerUserId),
+        tonumber(data.attackerId),
+        tonumber(data.thiefUserId),
+        tonumber(data.thiefId),
+        tonumber(data.robberUserId),
+        tonumber(data.robberId),
+    }) do
+        if id then
+            local player = Players:GetPlayerByUserId(id)
+            if player and player ~= LocalPlayer then
+                return player
+            end
+        end
+    end
 
-local arrastouAgora = function()
-	return false
+    for _, name in ipairs({
+        data.attackerName,
+        data.thiefName,
+        data.robberName,
+        data.name,
+    }) do
+        if typeof(name) == "string" and name ~= "" then
+            local player = Players:FindFirstChild(name)
+            if player and player ~= LocalPlayer then
+                return player
+            end
+        end
+    end
+
+    return nil
 end
 
-do
-	local arrastando = false
-	local moveu = false
-	local inicioMouse
-	local inicioPos
+-- ============================================================
+-- ALERTA / ROUBO
+-- ============================================================
 
-	local function aplicarPosicaoSalva()
-		local salvo = PlayerGui:GetAttribute(POSICAO_ATTR)
-		if typeof(salvo) == "Vector2" then
-			container.Position = UDim2.new(0, salvo.X, 0, salvo.Y)
-			container.AnchorPoint = Vector2.new(0, 0)
-		end
-	end
-
-	aplicarPosicaoSalva()
-
-	card.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-			arrastando = true
-			moveu = false
-			inicioMouse = input.Position
-			inicioPos = container.AbsolutePosition
-		end
-	end)
-
-	jan:add(UserInputService.InputChanged:Connect(function(input)
-
-		if not arrastando then
-			return
-		end
-
-		if input.UserInputType ~= Enum.UserInputType.MouseMovement
-			and input.UserInputType ~= Enum.UserInputType.Touch then
-			return
-		end
-
-		local delta = input.Position - inicioMouse
-
-		if delta.Magnitude > 4 then
-			moveu = true
-		end
-
-		if moveu then
-			container.AnchorPoint = Vector2.new(0, 0)
-			container.Position = UDim2.new(
-				0,
-				math.floor(inicioPos.X + delta.X),
-				0,
-				math.floor(inicioPos.Y + delta.Y)
-			)
-		end
-
-	end))
-
-	jan:add(UserInputService.InputEnded:Connect(function(input)
-
-		if not arrastando then
-			return
-		end
-
-		if input.UserInputType ~= Enum.UserInputType.MouseButton1
-			and input.UserInputType ~= Enum.UserInputType.Touch then
-			return
-		end
-
-		arrastando = false
-
-		if moveu then
-			PlayerGui:SetAttribute(POSICAO_ATTR, container.AbsolutePosition)
-		end
-
-	end))
-
-	-- Usado pelo clique do card para saber se foi arrasto.
-	arrastouAgora = function()
-		return moveu
-	end
-end
-
--- =========================================================
---                 EFEITOS DO MODO MÁXIMO
--- =========================================================
-
-local maximoAtivo = false
-local janMaximo = nil
-
-local function pararEfeitoMaximo()
-
-	if not maximoAtivo then
-		return
-	end
-
-	maximoAtivo = false
-
-	if janMaximo then
-		janMaximo:destroy()
-		janMaximo = nil
-	end
-
-	Rainbow.remove(cardStroke)
-
-	aura.Visible = false
-	sparkleContainer.Visible = false
-	cardScale.Scale = 1
-	cardStroke.Thickness = 1.2
-
-end
-
-local function iniciarEfeitoMaximo()
-
-	if maximoAtivo then
-		return
-	end
-
-	maximoAtivo = true
-	stats.vezesNoMaximo += 1
-
-	if S.avisoChatAuto then
-		tentarEnviarMensagem()
-	end
-
-	if not S.efeitosMaximo then
-		return
-	end
-
-	janMaximo = Janitor.new()
-
-	aura.Visible = true
-	sparkleContainer.Visible = true
-
-	Rainbow.add(cardStroke, function(cor)
-		cardStroke.Color = cor
-		auraStroke.Color = cor
-		badgeStroke.Color = cor
-		progressBar.BackgroundColor3 = cor
-		statusBadge.BackgroundColor3 = cor
-		priceLabel.TextColor3 = cor
-		shine.BackgroundColor3 = cor
-	end)
-
-	janMaximo:add(function()
-		Rainbow.remove(cardStroke)
-	end)
-
-	local pulseTime = 0
-
-	janMaximo:add(RunService.RenderStepped:Connect(function(dt)
-
-		pulseTime += dt * 4
-
-		local onda = (math.sin(pulseTime) + 1) / 2
-
-		cardScale.Scale = 1 + onda * 0.035
-		cardStroke.Thickness = 1.2 + onda * 2
-		cardStroke.Transparency = 0.15 + onda * 0.25
-		auraStroke.Transparency = 0.45 + onda * 0.3
-
-	end))
-
-	task.spawn(function()
-		while maximoAtivo and card.Parent do
-			shine.Position = UDim2.new(-0.5, 0, 0, 0)
-			local t = tween(shine, { Position = UDim2.new(1.2, 0, 0, 0) }, 1.1, Enum.EasingStyle.Linear)
-			t.Completed:Wait()
-			task.wait(0.25)
-		end
-	end)
-
-	task.spawn(function()
-		while maximoAtivo and card.Parent do
-			for _, sparkle in ipairs(sparkles) do
-				if not maximoAtivo then
-					break
-				end
-				sparkle.Visible = true
-				sparkle.Position = UDim2.new(math.random(), 0, math.random(), 0)
-				sparkle.TextTransparency = 0
-				local pos = sparkle.Position
-				tween(sparkle, {
-					Position = UDim2.new(pos.X.Scale, 0, pos.Y.Scale - 0.25, 0),
-					TextTransparency = 1,
-					TextSize = math.random(14, 22),
-				}, 0.6)
-				task.wait(0.08)
-			end
-			task.wait(0.15)
-		end
-	end)
-
-end
-
--- =========================================================
---                     TEMA / ANIMAÇÕES
--- =========================================================
-
-local function aplicarTema(cor, transparenciaBorda, textoBadge)
-
-	if maximoAtivo and S.efeitosMaximo then
-		statusBadge.Text = textoBadge
-		return
-	end
-
-	tween(progressBar, { BackgroundColor3 = cor }, 0.3)
-	tween(cardStroke, { Color = cor, Transparency = transparenciaBorda }, 0.3)
-	tween(statusBadge, { BackgroundColor3 = cor }, 0.3)
-	tween(priceLabel, { TextColor3 = cor }, 0.3)
-
-	badgeStroke.Color = cor
-	statusBadge.Text = textoBadge
-	statusBadge.TextColor3 = CORES.Texto
-
-end
-
-local function animarPreco()
-	local sobe = tween(priceLabel, { TextSize = 17 }, 0.1)
-	sobe.Completed:Connect(function()
-		tween(priceLabel, { TextSize = 15 }, 0.15, Enum.EasingStyle.Back)
-	end)
-end
-
--- =========================================================
---                     HACK ALERT
--- =========================================================
-
-local modoDiscreto = false
 local alertaAtivo = false
-local ladraoPersonagem = nil
-local ladraoJogador = nil
-local janEsp = nil
-local setaLadrao = nil
-
-local function pararAlerta()
-
-	if not alertaAtivo then
-		return
-	end
-
-	alertaAtivo = false
-	AlertSound:Stop()
-	AlertSound.TimePosition = 0
-
-end
 
 local function iniciarAlerta()
+    if alertaAtivo then
+        return
+    end
 
-	if alertaAtivo then
-		return
-	end
+    alertaAtivo = true
 
-	alertaAtivo = true
-
-	if S.somAlerta then
-		tocar(AlertSound)
-	end
-
+    if S.somAlerta then
+        playSound(AlertSound)
+    end
 end
 
--- --------------------- Travar / teleporte -------------------
-
-local travadoNoLadrao = false
-local glueConn = nil
-
-local function soltarLadrao()
-	if glueConn then
-		glueConn:Disconnect()
-		glueConn = nil
-	end
+local function pararAlerta()
+    alertaAtivo = false
+    pcall(function()
+        AlertSound:Stop()
+    end)
 end
 
-local function meuRoot()
-	local personagem = LocalPlayer.Character
-	return personagem and personagem:FindFirstChild("HumanoidRootPart")
-end
-
-local function rootLadrao()
-	return ladraoPersonagem and ladraoPersonagem:FindFirstChild("HumanoidRootPart")
-end
-
-local function irAteLadrao()
-
-	local meu = meuRoot()
-	local alvo = rootLadrao()
-
-	if meu and alvo then
-		meu.CFrame = alvo.CFrame * CFrame.new(0, 0, 4)
-		return true
-	end
-
-	return false
-
-end
-
-local function grudarNoLadrao()
-
-	if glueConn then
-		return
-	end
-
-	glueConn = jan:add(RunService.Heartbeat:Connect(function()
-
-		local meu = meuRoot()
-		local alvo = rootLadrao()
-
-		if meu and alvo then
-			meu.CFrame = alvo.CFrame * CFrame.new(0, 0, 4)
-		else
-			soltarLadrao()
-		end
-
-	end))
-
-end
-
-local function atualizarBotaoTravar()
-
-	if travadoNoLadrao then
-		lockButton.Text = "🔒 Travado no ladrão"
-		lockButton.BackgroundColor3 = CORES.Perigo
-	else
-		lockButton.Text = "🔓 Travar no ladrão"
-		lockButton.BackgroundColor3 = CORES.Fundo2
-		soltarLadrao()
-	end
-
-end
-
-lockButton.MouseButton1Click:Connect(function()
-
-	travadoNoLadrao = not travadoNoLadrao
-	atualizarBotaoTravar()
-
-	if travadoNoLadrao then
-		grudarNoLadrao()
-	end
-
-end)
-
-teleportButton.MouseButton1Click:Connect(function()
-
-	if travadoNoLadrao then
-		grudarNoLadrao()
-	else
-		irAteLadrao()
-	end
-
-end)
-
--- ---------------------- Seta indicadora ---------------------
-
-local function criarSeta()
-
-	if setaLadrao then
-		return setaLadrao
-	end
-
-	local seta = novo("TextLabel", {
-		Name = "SetaLadrao",
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Size = UDim2.fromOffset(46, 46),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.GothamBlack,
-		TextSize = 34,
-		Text = "➤",
-		TextColor3 = CORES.Perigo,
-		Visible = false,
-		ZIndex = 150,
-	}, gui)
-
-	contorno(seta, Color3.fromRGB(0, 0, 0), 2, 0.3)
-
-	Rainbow.add(seta, function(cor)
-		seta.TextColor3 = cor
-	end)
-
-	setaLadrao = seta
-
-	return seta
-
-end
-
-local function atualizarSeta()
-
-	local seta = setaLadrao
-
-	if not seta then
-		return
-	end
-
-	local alvo = rootLadrao()
-
-	if not alvo or not S.setaLadrao then
-		seta.Visible = false
-		return
-	end
-
-	local camera = Workspace.CurrentCamera
-
-	if not camera then
-		seta.Visible = false
-		return
-	end
-
-	local pos, naTela = camera:WorldToViewportPoint(alvo.Position)
-	local tamanho = camera.ViewportSize
-	local centro = Vector2.new(tamanho.X / 2, tamanho.Y / 2)
-
-	if naTela and pos.Z > 0
-		and pos.X > 0 and pos.X < tamanho.X
-		and pos.Y > 0 and pos.Y < tamanho.Y then
-		seta.Visible = false
-		return
-	end
-
-	local dir = Vector2.new(pos.X, pos.Y) - centro
-
-	if pos.Z < 0 then
-		dir = -dir
-	end
-
-	if dir.Magnitude < 1 then
-		dir = Vector2.new(0, -1)
-	end
-
-	dir = dir.Unit
-
-	local raio = math.min(tamanho.X, tamanho.Y) * 0.38
-	local ponto = centro + dir * raio
-
-	seta.Visible = true
-	seta.Position = UDim2.fromOffset(ponto.X, ponto.Y)
-	seta.Rotation = math.deg(math.atan2(dir.Y, dir.X))
-
-end
-
--- --------------------------- ESP ---------------------------
-
-local function limparEsp()
-
-	if janEsp then
-		janEsp:destroy()
-		janEsp = nil
-	end
-
-	soltarLadrao()
-
-	travadoNoLadrao = false
-	atualizarBotaoTravar()
-
-	ladraoPersonagem = nil
-	ladraoJogador = nil
-
-	teleportButton.Visible = false
-	lockButton.Visible = false
-
-	if setaLadrao then
-		setaLadrao.Visible = false
-	end
-
-end
-
-local function mostrarEsp(userId)
-
-	if not userId or userId == 0 then
-		return
-	end
-
-	limparEsp()
-
-	local jogador = Players:GetPlayerByUserId(userId)
-
-	if not jogador then
-		return
-	end
-
-	ladraoJogador = jogador
-
-	task.spawn(function()
-
-		local personagem = jogador.Character or jogador.CharacterAdded:Wait()
-		local root = personagem:WaitForChild("HumanoidRootPart", 5)
-
-		if not root or not alertaAtivo then
-			return
-		end
-
-		ladraoPersonagem = personagem
-
-		teleportButton.Visible = true
-		lockButton.Visible = true
-
-		if S.autoTravar then
-			travadoNoLadrao = true
-			atualizarBotaoTravar()
-			grudarNoLadrao()
-		end
-
-		if not S.espLadrao then
-			return
-		end
-
-		janEsp = Janitor.new()
-
-		local highlight = janEsp:add(novo("Highlight", {
-			FillTransparency = 0.75,
-			OutlineTransparency = 0,
-			DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
-		}, personagem))
-
-		local billboard = janEsp:add(novo("BillboardGui", {
-			Name = "SamModsHackerEsp",
-			Adornee = root,
-			Size = UDim2.fromOffset(90, 100),
-			StudsOffset = Vector3.new(0, 3.2, 0),
-			AlwaysOnTop = true,
-			MaxDistance = 500,
-		}, personagem))
-
-		local avatar = novo("ImageLabel", {
-			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new(0.5, 0, 0, 0),
-			Size = UDim2.fromOffset(46, 46),
-			BackgroundColor3 = Color3.fromRGB(15, 17, 22),
-			BackgroundTransparency = 0.15,
-			Image = ("rbxthumb://type=AvatarHeadShot&id=%d&w=100&h=100"):format(userId),
-		}, billboard)
-
-		cantos(avatar, 99)
-
-		local avatarStroke = contorno(avatar, CORES.Perigo, 2.5, 0)
-
-		local nomeLabel = novo("TextLabel", {
-			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new(0.5, 0, 0, 48),
-			Size = UDim2.new(1.6, 0, 0, 18),
-			BackgroundTransparency = 1,
-			Font = Enum.Font.GothamBlack,
-			TextSize = 14,
-			Text = jogador.Name,
-			TextColor3 = CORES.Texto,
-		}, billboard)
-
-		local nomeStroke = contorno(nomeLabel, Color3.fromRGB(0, 0, 0), 2, 0)
-
-		local distLabel = novo("TextLabel", {
-			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new(0.5, 0, 0, 66),
-			Size = UDim2.new(1.6, 0, 0, 16),
-			BackgroundTransparency = 1,
-			Font = Enum.Font.GothamBold,
-			TextSize = 12,
-			Text = "-- studs",
-			TextColor3 = Color3.fromRGB(230, 230, 235),
-		}, billboard)
-
-		contorno(distLabel, Color3.fromRGB(0, 0, 0), 1.5, 0)
-
-		Rainbow.add(highlight, function(cor)
-			highlight.OutlineColor = cor
-			highlight.FillColor = cor
-			avatarStroke.Color = cor
-			nomeStroke.Color = cor
-		end)
-
-		janEsp:add(function()
-			Rainbow.remove(highlight)
-		end)
-
-		local acumulado = 0
-
-		janEsp:add(RunService.Heartbeat:Connect(function(dt)
-
-			acumulado += dt
-
-			if acumulado < 0.1 then
-				return
-			end
-
-			acumulado = 0
-
-			local meu = meuRoot()
-			local alvo = personagem:FindFirstChild("HumanoidRootPart")
-
-			if meu and alvo then
-				distLabel.Text = ("%d studs"):format(
-					math.floor((meu.Position - alvo.Position).Magnitude)
-				)
-			end
-
-		end))
-
-	end)
-
-end
-
-criarSeta()
-
--- A seta tem loop próprio: o ESP pode estar desligado
--- e ela continuar ligada.
-do
-	local acumulado = 0
-
-	jan:add(RunService.Heartbeat:Connect(function(dt)
-
-		acumulado += dt
-
-		if acumulado < 0.06 then
-			return
-		end
-
-		acumulado = 0
-
-		if modoDiscreto then
-			if setaLadrao then
-				setaLadrao.Visible = false
-			end
-			return
-		end
-
-		atualizarSeta()
-
-	end))
-end
-
--- ------------------------ Log de roubos ---------------------
-
-local function atualizarLogUI()
-
-	for _, filho in ipairs(abaRoubos:GetChildren()) do
-		if filho:IsA("GuiObject") then
-			filho:Destroy()
-		end
-	end
-
-	if #logRoubos == 0 then
-		linhaTexto(abaRoubos, "Nenhum roubo registrado nesta sessão.", 1)
-		return
-	end
-
-	for i = #logRoubos, 1, -1 do
-
-		local registro = logRoubos[i]
-
-		local linha = novo("Frame", {
-			Size = UDim2.new(1, -6, 0, 30),
-			BackgroundColor3 = CORES.Fundo2,
-			BackgroundTransparency = 0.35,
-			BorderSizePixel = 0,
-			LayoutOrder = #logRoubos - i,
-			ZIndex = 32,
-		}, abaRoubos)
-
-		cantos(linha, 6)
-
-		novo("TextLabel", {
-			Position = UDim2.new(0, 8, 0, 3),
-			Size = UDim2.new(1, -16, 0, 14),
-			BackgroundTransparency = 1,
-			Font = Enum.Font.GothamBold,
-			TextSize = 11,
-			TextColor3 = CORES.Texto,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			TextTruncate = Enum.TextTruncate.AtEnd,
-			Text = ("%s  ×%d"):format(registro.nome, registro.vezes),
-			ZIndex = 33,
-		}, linha)
-
-		novo("TextLabel", {
-			Position = UDim2.new(0, 8, 0, 15),
-			Size = UDim2.new(1, -16, 0, 12),
-			BackgroundTransparency = 1,
-			Font = Enum.Font.Gotham,
-			TextSize = 10,
-			TextColor3 = CORES.TextoFraco,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			Text = "último: " .. registro.hora,
-			ZIndex = 33,
-		}, linha)
-
-	end
-
-end
-
-local function registrarRoubo(jogador)
-
-	stats.roubosSofridos += 1
-
-	local nome = jogador and jogador.Name or "Desconhecido"
-
-	for _, registro in ipairs(logRoubos) do
-		if registro.nome == nome then
-			registro.vezes += 1
-			registro.hora = horaAgora()
-			atualizarLogUI()
-			return
-		end
-	end
-
-	table.insert(logRoubos, {
-		nome = nome,
-		vezes = 1,
-		hora = horaAgora(),
-		userId = jogador and jogador.UserId or 0,
-	})
-
-	atualizarLogUI()
-
-end
-
--- ---------------------- Evento do jogo ----------------------
-
-local KINDS_FIM = {
-	robbery = true, roubo = true, steal = true, stealing = true,
-	stolen = true, theft = true, robbery_start = true,
-	robbery_end = true, steal_start = true, steal_end = true,
+local robberyEndKinds = {
+    result = true,
+    abort = true,
+    ["end"] = true,
+    ended = true,
+    finish = true,
+    finished = true,
+    robbery_end = true,
+    steal_end = true,
 }
 
+local function registerRobbery(player)
+    stats.roubosSofridos += 1
 
--- =========================================================
---                 AUTO DEFENDER (BASEBALL BAT)
--- =========================================================
--- Sistema novo, separado da interface original.
--- NÃO cria GUI adicional e NÃO altera os elementos existentes.
--- Atalho: F6.
---
--- Fluxo:
---   F6 ON + role=victim -> pega o ladrão -> equipa Baseball Bat
---   -> aproxima/gruda -> dispara MeleeHit durante uma tentativa.
---   -> solta -> se o roubo continuar, espera e tenta novamente.
---   -> ao fim do roubo, para e solta imediatamente.
+    if not player then
+        return
+    end
 
-local autoDefesaAtiva = false
-local autoDefesaExecutando = false
-local autoDefesaRouboAtivo = false
-local autoDefesaLadrao = nil
-local autoDefesaFollowConn = nil
-local autoDefesaThread = nil
+    for _, entry in ipairs(logRoubos) do
+        if entry.userId == player.UserId then
+            entry.times += 1
+            entry.time = os.date("%H:%M:%S")
+            return
+        end
+    end
 
-local AUTO_DEFESA_TOOL = "Baseball Bat"
-local AUTO_DEFESA_OFFSET = CFrame.new(0, 0, 3)
-local AUTO_DEFESA_TENTATIVA = 0.45
-local AUTO_DEFESA_INTERVALO = 0.55
-local AUTO_DEFESA_DISPARO = 0.10
+    table.insert(logRoubos, {
+        userId = player.UserId,
+        name = player.Name,
+        times = 1,
+        time = os.date("%H:%M:%S"),
+    })
 
-local function autoDefesaRoot(jogador)
-	if not jogador or jogador.Parent ~= Players then
-		return nil
-	end
-
-	local personagem = jogador.Character
-	if not personagem then
-		return nil
-	end
-
-	return personagem:FindFirstChild("HumanoidRootPart")
+    while #logRoubos > 20 do
+        table.remove(logRoubos, 1)
+    end
 end
 
-local function autoDefesaLimparFollow()
-	if autoDefesaFollowConn then
-		autoDefesaFollowConn:Disconnect()
-		autoDefesaFollowConn = nil
-	end
-end
+HackEvent.OnClientEvent:Connect(function(data)
+    if typeof(data) ~= "table" then
+        return
+    end
 
-local function autoDefesaSoltar()
-	autoDefesaLimparFollow()
-end
+    local kind = tostring(data.kind or ""):lower()
+    local action = tostring(data.action or ""):lower()
+    local eventType = tostring(data.type or ""):lower()
+    local role = tostring(data.role or ""):lower()
 
-local function autoDefesaPegarBat()
-	local personagem = LocalPlayer.Character
-	local humanoid = personagem and personagem:FindFirstChildOfClass("Humanoid")
-	local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+    if robberyEndKinds[kind]
+        or robberyEndKinds[action]
+        or robberyEndKinds[eventType] then
 
-	if not humanoid then
-		return nil
-	end
+        robberyActive = false
+        pararAlerta()
+        stopDefense()
+        return
+    end
 
-	local bat = personagem and personagem:FindFirstChild(AUTO_DEFESA_TOOL)
-	if bat and bat:IsA("Tool") then
-		return bat
-	end
+    if kind == "phase" then
+        if role == "victim" then
+            local thief = resolveThief(data)
 
-	bat = backpack and backpack:FindFirstChild(AUTO_DEFESA_TOOL)
-	if not bat or not bat:IsA("Tool") then
-		return nil
-	end
+            if thief then
+                if not robberyActive then
+                    registerRobbery(thief)
 
-	pcall(function()
-		humanoid:EquipTool(bat)
-	end)
+                    notify({
+                        title = "🚨 ESTÃO TE ROUBANDO",
+                        text = thief.Name .. " está tentando te roubar.",
+                        color = COLORS.Danger,
+                        duration = 5,
+                    })
+                end
 
-	task.wait(0.15)
+                robberyActive = true
+                currentThief = thief
 
-	local equipado =
-		LocalPlayer.Character
-		and LocalPlayer.Character:FindFirstChild(AUTO_DEFESA_TOOL)
+                iniciarAlerta()
 
-	if equipado and equipado:IsA("Tool") then
-		return equipado
-	end
+                if S.espLadrao then
+                    showThiefESP(thief)
+                end
 
-	return nil
-end
+                if enabled then
+                    startDefenseLoop()
+                end
+            end
 
-local function autoDefesaDesequipar()
-	local personagem = LocalPlayer.Character
-	local humanoid = personagem and personagem:FindFirstChildOfClass("Humanoid")
+        elseif role == "attacker" then
+            -- você é o atacante; não inicia defesa
+        end
 
-	if humanoid then
-		pcall(function()
-			humanoid:UnequipTools()
-		end)
-	end
-end
+        return
+    end
 
-local function autoDefesaGrudar(jogador)
-	autoDefesaLimparFollow()
+    if kind == "result"
+        or kind == "abort"
+        or kind == "end"
+        or kind == "ended"
+        or kind == "finish"
+        or kind == "finished" then
 
-	local meuRoot = autoDefesaRoot(LocalPlayer)
-	local alvoRoot = autoDefesaRoot(jogador)
-
-	if not meuRoot or not alvoRoot then
-		return false
-	end
-
-	pcall(function()
-		meuRoot.CFrame = alvoRoot.CFrame * AUTO_DEFESA_OFFSET
-	end)
-
-	autoDefesaFollowConn = RunService.Heartbeat:Connect(function()
-		if not autoDefesaAtiva
-			or not autoDefesaRouboAtivo
-			or autoDefesaLadrao ~= jogador then
-
-			autoDefesaLimparFollow()
-			return
-		end
-
-		local meu = autoDefesaRoot(LocalPlayer)
-		local alvo = autoDefesaRoot(jogador)
-
-		if not meu or not alvo then
-			autoDefesaLimparFollow()
-			return
-		end
-
-		pcall(function()
-			meu.CFrame = alvo.CFrame * AUTO_DEFESA_OFFSET
-		end)
-	end)
-
-	return true
-end
-
-local function autoDefesaDisparar(jogador)
-	if not jogador or jogador.Parent ~= Players then
-		return false
-	end
-
-	if not MeleeHit or not MeleeHit:IsA("RemoteEvent") then
-		return false
-	end
-
-	return pcall(function()
-		MeleeHit:FireServer(jogador)
-	end)
-end
-
-local function autoDefesaParar()
-	autoDefesaRouboAtivo = false
-	autoDefesaLadrao = nil
-	autoDefesaSoltar()
-	autoDefesaDesequipar()
-end
-
-local function autoDefesaUmaTentativa(jogador)
-	if not autoDefesaAtiva
-		or not autoDefesaRouboAtivo
-		or autoDefesaLadrao ~= jogador then
-		return
-	end
-
-	if not autoDefesaRoot(jogador) then
-		return
-	end
-
-	local bat = autoDefesaPegarBat()
-	if not bat then
-		return
-	end
-
-	if not autoDefesaGrudar(jogador) then
-		return
-	end
-
-	local inicio = os.clock()
-
-	while autoDefesaAtiva
-		and autoDefesaRouboAtivo
-		and autoDefesaLadrao == jogador
-		and os.clock() - inicio < AUTO_DEFESA_TENTATIVA do
-
-		autoDefesaDisparar(jogador)
-		task.wait(AUTO_DEFESA_DISPARO)
-	end
-
-	-- Cada tentativa termina soltando do ladrão.
-	autoDefesaSoltar()
-end
-
-local function autoDefesaIniciarLoop()
-	if autoDefesaThread then
-		return
-	end
-
-	if not autoDefesaAtiva
-		or not autoDefesaRouboAtivo
-		or not autoDefesaLadrao then
-		return
-	end
-
-	autoDefesaExecutando = true
-
-	autoDefesaThread = task.spawn(function()
-		while autoDefesaAtiva
-			and autoDefesaRouboAtivo
-			and autoDefesaLadrao do
-
-			local alvo = autoDefesaLadrao
-
-			if alvo.Parent ~= Players then
-				break
-			end
-
-			autoDefesaUmaTentativa(alvo)
-
-			if not autoDefesaAtiva
-				or not autoDefesaRouboAtivo
-				or autoDefesaLadrao ~= alvo then
-				break
-			end
-
-			-- Se ainda está roubando, solta e tenta novamente depois.
-			task.wait(AUTO_DEFESA_INTERVALO)
-		end
-
-		autoDefesaExecutando = false
-		autoDefesaThread = nil
-
-		if not autoDefesaRouboAtivo then
-			autoDefesaSoltar()
-			autoDefesaDesequipar()
-		end
-	end)
-end
-
-local function autoDefesaAtivarDesativar(ligado)
-	autoDefesaAtiva = ligado == true
-
-	if not autoDefesaAtiva then
-		autoDefesaParar()
-		return
-	end
-
-	if autoDefesaRouboAtivo and autoDefesaLadrao then
-		autoDefesaIniciarLoop()
-	end
-end
-
--- Limpeza garantida caso o LocalScript seja destruído.
-jan:add(function()
-	autoDefesaAtiva = false
-	autoDefesaParar()
+        robberyActive = false
+        pararAlerta()
+        stopDefense()
+    end
 end)
 
-jan:add(HackEvent.OnClientEvent:Connect(function(data)
-
-	if typeof(data) ~= "table" then
-		return
-	end
-
-	local kind = tostring(data.kind or ""):lower()
-	local action = tostring(data.action or ""):lower()
-	local tipo = tostring(data.type or ""):lower()
-	local role = tostring(data.role or ""):lower()
-	local nome = tostring(data.name or "")
-
-	if KINDS_FIM[kind] or KINDS_FIM[action] or KINDS_FIM[tipo] then
-		autoDefesaParar()
-		pararAlerta()
-		limparEsp()
-		return
-	end
-
-	if kind == "phase" then
-
-		if role == "victim" then
-
-			local ladrao = Players:GetPlayerByUserId(tonumber(data.userId) or 0)
-
-			if not alertaAtivo then
-				registrarRoubo(ladrao)
-				notificar({
-					titulo = "🚨 ESTÃO TE ROUBANDO",
-					texto = (ladrao and ladrao.Name or "Alguém") .. " está hackeando sua base",
-					cor = CORES.Perigo,
-					imagem = ladrao
-						and ("rbxthumb://type=AvatarHeadShot&id=%d&w=100&h=100"):format(ladrao.UserId)
-						or nil,
-					duracao = 6,
-				})
-			end
-
-			iniciarAlerta()
-			mostrarEsp(tonumber(data.userId))
-
-			-- Auto Defender: só entra aqui quando VOCÊ é a vítima.
-			autoDefesaRouboAtivo = true
-			autoDefesaLadrao = ladrao
-			if autoDefesaAtiva then
-				autoDefesaIniciarLoop()
-			end
-
-		elseif role == "attacker" or (nome ~= "" and nome == LocalPlayer.Name) then
-
-			-- Você é quem está roubando: não faz nada.
-
-		else
-
-			warn("[SamMods] role inesperado no HackEvent: '" .. tostring(data.role) .. "'")
-
-		end
-
-		return
-
-	end
-
-	if kind == "result" or kind == "abort" or kind == "end"
-		or kind == "ended" or kind == "finish" or kind == "finished" then
-		autoDefesaParar()
-		pararAlerta()
-		limparEsp()
-		return
-	end
-
-end))
-
--- =========================================================
---             NOTIFICAÇÃO DE CHAT (nomes especiais)
--- =========================================================
-
-task.spawn(function()
-
-	local canais = TextChatService:WaitForChild("TextChannels", 20)
-
-	if not canais then
-		return
-	end
-
-	local geral = canais:WaitForChild("RBXGeneral", 20)
-
-	if not geral then
-		return
-	end
-
-	jan:add(geral.MessageReceived:Connect(function(message)
-
-		local fonte = message.TextSource
-
-		if not fonte then
-			return
-		end
-
-		local jogador = Players:GetPlayerByUserId(fonte.UserId)
-
-		if not jogador or jogador == LocalPlayer then
-			return
-		end
-
-		if CONFIG.nomesEspeciais[jogador.Name] then
-			notificar({
-				titulo = jogador.Name,
-				texto = message.Text,
-				imagem = ("rbxthumb://type=AvatarHeadShot&id=%d&w=100&h=100"):format(jogador.UserId),
-				rainbow = true,
-				duracao = 5,
-			})
-		end
-
-	end))
-
+Players.PlayerRemoving:Connect(function(player)
+    if player == currentThief then
+        robberyActive = false
+        pararAlerta()
+        stopDefense()
+    end
 end)
 
--- =========================================================
---            TAG DE DONO/ADM/USUÁRIO ACIMA DA CABEÇA
--- =========================================================
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.4)
 
-local tagsAtivas = {}
+    if enabled
+        and robberyActive
+        and currentThief then
 
-local function removerTag(personagem)
+        if S.espLadrao then
+            showThiefESP(currentThief)
+        end
 
-	local tag = personagem:FindFirstChild("SamModsTag")
-
-	if tag then
-		local stroke = tagsAtivas[tag]
-		if stroke then
-			Rainbow.remove(stroke)
-			tagsAtivas[tag] = nil
-		end
-		tag:Destroy()
-	end
-
-end
-
-local function colocarTag(jogador, personagem)
-
-	if not S.tagsJogadores then
-		return
-	end
-
-	local root = personagem:WaitForChild("HumanoidRootPart", 5)
-
-	if not root then
-		return
-	end
-
-	removerTag(personagem)
-
-	local billboard = novo("BillboardGui", {
-		Name = "SamModsTag",
-		Adornee = root,
-		Size = UDim2.fromOffset(120, 20),
-		StudsOffset = Vector3.new(0, 3, 0),
-		AlwaysOnTop = true,
-		MaxDistance = 120,
-	}, personagem)
-
-	local label = novo("TextLabel", {
-		Size = UDim2.fromScale(1, 1),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.GothamBlack,
-		TextSize = 13,
-	}, billboard)
-
-	local stroke = contorno(label, Color3.fromRGB(30, 30, 32), 1.5, 0)
-
-	local ehDono = jogador.UserId == CONFIG.donoUserId
-	local ehAdm = jogador.Name == CONFIG.admNome
-
-	label.Text = ehDono and "OWNER" or ehAdm and "ADM" or "Usuário"
-
-	if ehDono or ehAdm then
-		label.TextColor3 = CORES.Texto
-		tagsAtivas[billboard] = stroke
-		Rainbow.add(stroke, function(cor)
-			stroke.Color = cor
-		end)
-	else
-		label.TextColor3 = Color3.fromRGB(160, 160, 165)
-	end
-
-end
-
-local function acompanharJogador(jogador)
-
-	if jogador.Character then
-		task.spawn(colocarTag, jogador, jogador.Character)
-	end
-
-	jan:add(jogador.CharacterAdded:Connect(function(personagem)
-		task.spawn(colocarTag, jogador, personagem)
-	end))
-
-end
-
-for _, jogador in ipairs(Players:GetPlayers()) do
-	acompanharJogador(jogador)
-end
-
-jan:add(Players.PlayerAdded:Connect(acompanharJogador))
-
-local function reaplicarTags()
-
-	for _, jogador in ipairs(Players:GetPlayers()) do
-
-		local personagem = jogador.Character
-
-		if personagem then
-			if S.tagsJogadores then
-				task.spawn(colocarTag, jogador, personagem)
-			else
-				removerTag(personagem)
-			end
-		end
-
-	end
-
-end
-
--- =========================================================
---                  METAS E MODO DISCRETO
--- =========================================================
-
-local metaTokens = CONFIG.metaTokens
-local metaValor = CONFIG.metaValor
-local metaTokensAvisada = false
-local metaValorAvisada = false
-
-local function aplicarVisibilidade()
-	container.Visible = not modoDiscreto
-	notifyPilha.Visible = not modoDiscreto
-	btnRestaurar.Visible = modoDiscreto
-	if modoDiscreto then
-		painel.Visible = false
-	end
-	if setaLadrao then
-		setaLadrao.Visible = setaLadrao.Visible and not modoDiscreto
-	end
-end
-
--- Girou o celular / mudou a janela: refaz o tamanho do painel
--- e garante que o card não ficou fora da tela.
-do
-	local camera = Workspace.CurrentCamera
-
-	local function ajustar()
-
-		medirPainel()
-
-		if painel.Visible then
-			painel.Size = UDim2.fromOffset(PAINEL_W, PAINEL_H)
-		end
-
-		local vp = tela()
-		local pos = container.AbsolutePosition
-		local tam = container.AbsoluteSize
-
-		if pos.X + tam.X > vp.X or pos.Y + tam.Y > vp.Y or pos.X < 0 or pos.Y < 0 then
-			container.AnchorPoint = Vector2.new(1, 0)
-			container.Position = UDim2.new(1, -16, 0, 92)
-		end
-
-	end
-
-	if camera then
-		jan:add(camera:GetPropertyChangedSignal("ViewportSize"):Connect(ajustar))
-	end
-end
-
--- =========================================================
---                 CONTEÚDO DA ABA CONFIG
--- =========================================================
-
-linhaTexto(abaConfig, "Funções", 0)
-
-linhaToggle(abaConfig, "somAlerta", "🔔 Som de alerta de roubo", 1, function(ligado)
-	if not ligado then
-		AlertSound:Stop()
-	elseif alertaAtivo then
-		tocar(AlertSound)
-	end
-	btnSom.Text = ligado and "🔔" or "🔇"
+        startDefenseLoop()
+    end
 end)
 
-linhaToggle(abaConfig, "efeitosMaximo", "🌈 Efeitos do modo máximo", 2, function(ligado)
-	if not ligado then
-		pararEfeitoMaximo()
-	end
+-- ============================================================
+-- SETA DO LADRÃO
+-- ============================================================
+
+local function createThiefArrow()
+    if setaLadrao then
+        return
+    end
+
+    setaLadrao = make("TextLabel", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Size = UDim2.fromOffset(44, 44),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBlack,
+        TextSize = 31,
+        Text = "➤",
+        TextColor3 = COLORS.Danger,
+        Visible = false,
+        ZIndex = 120,
+    }, gui)
+
+    addTextStroke(
+        setaLadrao,
+        Color3.fromRGB(0, 0, 0),
+        1.5,
+        0
+    )
+end
+
+local function updateThiefArrow()
+    if not setaLadrao then
+        return
+    end
+
+    if not robberyActive
+        or not currentThief
+        or not S.setaLadrao
+        or modoDiscreto then
+
+        setaLadrao.Visible = false
+        return
+    end
+
+    local root = getRoot(currentThief)
+    local camera = Workspace.CurrentCamera
+
+    if not root or not camera then
+        setaLadrao.Visible = false
+        return
+    end
+
+    local point, onScreen =
+        camera:WorldToViewportPoint(root.Position)
+
+    local viewport =
+        camera.ViewportSize
+
+    if onScreen
+        and point.Z > 0
+        and point.X > 0
+        and point.X < viewport.X
+        and point.Y > 0
+        and point.Y < viewport.Y then
+
+        setaLadrao.Visible = false
+        return
+    end
+
+    local center =
+        Vector2.new(
+            viewport.X / 2,
+            viewport.Y / 2
+        )
+
+    local direction =
+        Vector2.new(
+            point.X,
+            point.Y
+        ) - center
+
+    if point.Z < 0 then
+        direction = -direction
+    end
+
+    if direction.Magnitude < 1 then
+        direction = Vector2.new(0, -1)
+    end
+
+    direction = direction.Unit
+
+    local radius =
+        math.min(
+            viewport.X,
+            viewport.Y
+        ) * 0.37
+
+    local position =
+        center
+        + direction * radius
+
+    setaLadrao.Visible = true
+    setaLadrao.Position =
+        UDim2.fromOffset(
+            position.X,
+            position.Y
+        )
+
+    setaLadrao.Rotation =
+        math.deg(
+            math.atan2(
+                direction.Y,
+                direction.X
+            )
+        )
+
+    setaLadrao.TextColor3 =
+        Rainbow.color()
+end
+
+createThiefArrow()
+
+-- ============================================================
+-- TAGS LOCAIS
+-- ============================================================
+-- Mantém o princípio do script local: não marca todo mundo
+-- automaticamente como executor. A função é opcional e deixa
+-- apenas o visual local configurável.
+
+local function removeLocalTags()
+    for _, conn in pairs(tagConnections) do
+        disconnect(conn)
+    end
+    tagConnections = {}
+
+    local character = LocalPlayer.Character
+    if character then
+        local head = character:FindFirstChild("Head")
+        if head then
+            local old = head:FindFirstChild("SamModsLocalTag")
+            if old then
+                old:Destroy()
+            end
+        end
+    end
+end
+
+local function createLocalTag()
+    removeLocalTags()
+
+    if not S.tagsJogadores then
+        return
+    end
+
+    local character = LocalPlayer.Character
+    if not character then
+        return
+    end
+
+    local head = character:FindFirstChild("Head")
+    if not head then
+        return
+    end
+
+    local billboard =
+        Instance.new("BillboardGui")
+
+    billboard.Name =
+        "SamModsLocalTag"
+
+    billboard.Adornee =
+        head
+
+    billboard.AlwaysOnTop =
+        true
+
+    billboard.LightInfluence =
+        0
+
+    billboard.MaxDistance =
+        100
+
+    billboard.Size =
+        UDim2.fromOffset(
+            135,
+            28
+        )
+
+    billboard.StudsOffset =
+        Vector3.new(
+            0,
+            2.65,
+            0
+        )
+
+    billboard.Parent =
+        head
+
+    local label =
+        Instance.new("TextLabel")
+
+    label.BackgroundTransparency =
+        1
+
+    label.Size =
+        UDim2.fromScale(
+            1,
+            1
+        )
+
+    label.Font =
+        Enum.Font.GothamBlack
+
+    label.TextScaled =
+        true
+
+    label.Text =
+        "USER"
+
+    label.TextColor3 =
+        Color3.fromRGB(
+            155,
+            155,
+            155
+        )
+
+    label.Parent =
+        billboard
+
+    addTextStroke(
+        label,
+        Color3.fromRGB(0, 0, 0),
+        1.2,
+        0.15
+    )
+
+    tagConnections.character =
+        LocalPlayer.CharacterAdded:Connect(function()
+            task.wait(0.3)
+            createLocalTag()
+        end)
+end
+
+-- ============================================================
+-- UI RAIZ
+-- ============================================================
+
+local gui =
+    make("ScreenGui", {
+        Name = GUI_NAME,
+        ResetOnSpawn = false,
+        IgnoreGuiInset = true,
+        DisplayOrder = 60,
+    }, PlayerGui)
+
+-- Sem fundo e sem borda estrutural.
+-- A escala fica aqui somente para os elementos do Auto Defender.
+local guiScale =
+    make("UIScale", {
+        Scale = 1,
+    }, gui)
+
+-- ============================================================
+-- BOLHA DE CONFIGURAÇÕES
+-- ============================================================
+
+local settingsBubble =
+    make("TextButton", {
+        Name = "SettingsBubble",
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.new(1, -10, 0, 88),
+        Size = UDim2.fromOffset(38, 38),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Font = Enum.Font.GothamBlack,
+        TextSize = 21,
+        Text = "⚙",
+        TextColor3 = COLORS.Text,
+        ZIndex = 100,
+    }, gui)
+
+addTextStroke(
+    settingsBubble,
+    Color3.fromRGB(0, 0, 0),
+    1.7,
+    0
+)
+
+Rainbow.add(settingsBubble, function(c)
+    if configOpen then
+        settingsBubble.TextColor3 = c
+    end
 end)
 
-linhaToggle(abaConfig, "avisoChatAuto", "💬 Avisar no chat no máximo", 3)
+-- ============================================================
+-- LOJA INDEPENDENTE
+-- ============================================================
 
-linhaToggle(abaConfig, "espLadrao", "👁 Destacar o ladrão (ESP)", 4, function(ligado)
-	if not ligado and janEsp then
-		janEsp:destroy()
-		janEsp = nil
-	end
+local storeWidget =
+    make("Frame", {
+        Name = "StoreWidget",
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.new(1, -10, 0, 132),
+        Size = UDim2.fromOffset(178, 62),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ZIndex = 80,
+    }, gui)
+
+local storeIcon =
+    make("TextLabel", {
+        Position = UDim2.fromOffset(0, 0),
+        Size = UDim2.fromOffset(28, 22),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBlack,
+        TextSize = 16,
+        Text = "💎",
+        TextColor3 = COLORS.Gold,
+        ZIndex = 81,
+    }, storeWidget)
+
+addTextStroke(
+    storeIcon,
+    Color3.fromRGB(0, 0, 0),
+    1.2,
+    0
+)
+
+local storePrice =
+    make("TextLabel", {
+        Position = UDim2.fromOffset(28, 0),
+        Size = UDim2.fromOffset(72, 22),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBlack,
+        TextSize = 17,
+        Text = "$10",
+        TextColor3 = COLORS.Accent,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 81,
+    }, storeWidget)
+
+addTextStroke(
+    storePrice,
+    Color3.fromRGB(0, 0, 0),
+    1.4,
+    0
+)
+
+local storeStatus =
+    make("TextLabel", {
+        Position = UDim2.fromOffset(100, 1),
+        Size = UDim2.new(1, -100, 0, 18),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBold,
+        TextSize = 8,
+        Text = "NORMAL",
+        TextColor3 = COLORS.Muted,
+        TextXAlignment = Enum.TextXAlignment.Right,
+        ZIndex = 81,
+    }, storeWidget)
+
+addTextStroke(
+    storeStatus,
+    Color3.fromRGB(0, 0, 0),
+    1,
+    0.15
+)
+
+local storeEarnings =
+    make("TextLabel", {
+        Position = UDim2.fromOffset(0, 23),
+        Size = UDim2.new(1, 0, 0, 16),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBold,
+        TextSize = 8,
+        Text = "Tokens: 0  •  Receber: $0",
+        TextColor3 = COLORS.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 81,
+    }, storeWidget)
+
+addTextStroke(
+    storeEarnings,
+    Color3.fromRGB(0, 0, 0),
+    1,
+    0.2
+)
+
+local storeTimer =
+    make("TextLabel", {
+        Position = UDim2.fromOffset(0, 40),
+        Size = UDim2.new(1, -2, 0, 14),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamMedium,
+        TextSize = 8,
+        Text = "Troca em --s",
+        TextColor3 = COLORS.Muted,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 81,
+    }, storeWidget)
+
+addTextStroke(
+    storeTimer,
+    Color3.fromRGB(0, 0, 0),
+    1,
+    0.2
+)
+
+storeWidget.MouseEnter = nil
+
+-- Clique abre a loja do jogo.
+storeWidget.InputBegan:Connect(function(input)
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1
+        and input.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+
+    if OpenTokenExchange then
+        if OpenTokenExchange:IsA("RemoteEvent") then
+            pcall(function()
+                OpenTokenExchange:FireServer()
+            end)
+        elseif OpenTokenExchange:IsA("BindableEvent") then
+            pcall(function()
+                OpenTokenExchange:Fire()
+            end)
+        end
+    end
 end)
 
-linhaToggle(abaConfig, "setaLadrao", "➤ Seta apontando pro ladrão", 5)
+-- ============================================================
+-- PAINEL DE CONFIGURAÇÕES
+-- ============================================================
 
-linhaToggle(abaConfig, "tagsJogadores", "🏷 Tags acima da cabeça", 6, function()
-	reaplicarTags()
+local settingsPanel =
+    make("Frame", {
+        Name = "SettingsPanel",
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.new(1, -10, 0, 88),
+        Size = UDim2.fromOffset(238, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Visible = false,
+        ZIndex = 110,
+    }, gui)
+
+local header =
+    make("TextLabel", {
+        Position = UDim2.fromOffset(0, 0),
+        Size = UDim2.new(1, 0, 0, 28),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBlack,
+        TextSize = 14,
+        Text = "SamMods • Configurações",
+        TextColor3 = COLORS.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 111,
+    }, settingsPanel)
+
+addTextStroke(
+    header,
+    Color3.fromRGB(0, 0, 0),
+    1.4,
+    0
+)
+
+local closeButton =
+    make("TextButton", {
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.new(1, 0, 0, 0),
+        Size = UDim2.fromOffset(26, 24),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Font = Enum.Font.GothamBlack,
+        TextSize = 14,
+        Text = "✕",
+        TextColor3 = COLORS.Text,
+        ZIndex = 112,
+    }, settingsPanel)
+
+addTextStroke(
+    closeButton,
+    Color3.fromRGB(0, 0, 0),
+    1.2,
+    0
+)
+
+local panelContent =
+    make("ScrollingFrame", {
+        Position = UDim2.fromOffset(0, 30),
+        Size = UDim2.new(1, 0, 1, -30),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        CanvasSize = UDim2.fromOffset(0, 0),
+        ScrollBarThickness = 3,
+        ScrollBarImageColor3 = COLORS.Accent,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ZIndex = 111,
+    }, settingsPanel)
+
+make("UIListLayout", {
+    Padding = UDim.new(0, 4),
+    SortOrder = Enum.SortOrder.LayoutOrder,
+}, panelContent)
+
+-- ============================================================
+-- COMPONENTES DO PAINEL
+-- ============================================================
+
+local function makeSection(text, order)
+    local label =
+        make("TextLabel", {
+            Size = UDim2.new(1, -6, 0, 20),
+            BackgroundTransparency = 1,
+            Font = Enum.Font.GothamBlack,
+            TextSize = 10,
+            TextColor3 = COLORS.Muted,
+            Text = text,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            LayoutOrder = order,
+            ZIndex = 112,
+        }, panelContent)
+
+    addTextStroke(
+        label,
+        Color3.fromRGB(0, 0, 0),
+        1,
+        0.18
+    )
+
+    return label
+end
+
+local function makeRow(text, order, rightText)
+    local row =
+        make("Frame", {
+            Size = UDim2.new(1, -4, 0, 27),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            LayoutOrder = order,
+            ZIndex = 112,
+        }, panelContent)
+
+    local label =
+        make("TextLabel", {
+            Position = UDim2.fromOffset(0, 0),
+            Size = UDim2.new(1, -74, 1, 0),
+            BackgroundTransparency = 1,
+            Font = Enum.Font.GothamMedium,
+            TextSize = 9,
+            TextColor3 = COLORS.Text,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Text = text,
+            ZIndex = 113,
+        }, row)
+
+    addTextStroke(
+        label,
+        Color3.fromRGB(0, 0, 0),
+        1,
+        0.2
+    )
+
+    local button =
+        make("TextButton", {
+            AnchorPoint = Vector2.new(1, 0.5),
+            Position = UDim2.new(1, 0, 0.5, 0),
+            Size = UDim2.fromOffset(62, 22),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            AutoButtonColor = false,
+            Font = Enum.Font.GothamBlack,
+            TextSize = 9,
+            Text = rightText or "OFF",
+            TextColor3 = COLORS.Muted,
+            ZIndex = 113,
+        }, row)
+
+    addTextStroke(
+        button,
+        Color3.fromRGB(0, 0, 0),
+        1,
+        0.1
+    )
+
+    return row, button
+end
+
+local function bindToggle(text, key, order, callback)
+    local row, button =
+        makeRow(
+            text,
+            order,
+            S[key] and "ON" or "OFF"
+        )
+
+    local function refresh()
+        button.Text = S[key] and "ON" or "OFF"
+        button.TextColor3 =
+            S[key]
+            and COLORS.Good
+            or COLORS.Muted
+    end
+
+    button.MouseButton1Click:Connect(function()
+        S[key] = not S[key]
+        refresh()
+
+        if callback then
+            callback(S[key])
+        end
+    end)
+
+    refresh()
+    return row, button
+end
+
+makeSection("DEFESA", 1)
+
+bindToggle(
+    "🛡 Auto Defender",
+    "autoDefender",
+    2,
+    function(value)
+        enabled = value
+
+        if enabled
+            and robberyActive
+            and currentThief then
+
+            startDefenseLoop()
+        elseif not enabled then
+
+            releaseFromThief()
+            unequipBat()
+        end
+    end
+)
+
+bindToggle(
+    "🔔 Som de alerta",
+    "somAlerta",
+    3,
+    function(value)
+        if not value then
+            AlertSound:Stop()
+        elseif alertaAtivo then
+            playSound(AlertSound)
+        end
+    end
+)
+
+bindToggle(
+    "👁 ESP do ladrão",
+    "espLadrao",
+    4,
+    function(value)
+        if value
+            and robberyActive
+            and currentThief then
+
+            showThiefESP(currentThief)
+        else
+            cleanupThiefESP()
+        end
+    end
+)
+
+bindToggle(
+    "➤ Seta do ladrão",
+    "setaLadrao",
+    5
+)
+
+bindToggle(
+    "🔒 Auto-travar no ladrão",
+    "autoTravar",
+    6,
+    function(value)
+        if value
+            and robberyActive
+            and currentThief then
+
+            followThief(currentThief)
+        elseif not value then
+            releaseFromThief()
+        end
+    end
+)
+
+makeSection("LOJA", 8)
+
+bindToggle(
+    "🌈 Efeitos no máximo",
+    "efeitosMaximo",
+    9,
+    function(value)
+        if not value then
+            stopMaxEffect()
+        end
+    end
+)
+
+bindToggle(
+    "💬 Aviso automático no chat",
+    "avisoChatAuto",
+    10
+)
+
+bindToggle(
+    "🔔 Notificações",
+    "notificacoes",
+    11
+)
+
+makeSection("OUTROS", 13)
+
+bindToggle(
+    "🙈 Modo discreto",
+    "lojaVisivel",
+    14,
+    function(value)
+        modoDiscreto = not value
+    end
+)
+
+local metaTokensRow, metaTokensButton =
+    makeRow(
+        "💎 Meta de Tokens",
+        16,
+        "0"
+    )
+
+local metaTokensBox =
+    make("TextBox", {
+        AnchorPoint = Vector2.new(1, 0.5),
+        Position = UDim2.new(1, 0, 0.5, 0),
+        Size = UDim2.fromOffset(62, 22),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ClearTextOnFocus = false,
+        Font = Enum.Font.GothamBold,
+        TextSize = 9,
+        TextColor3 = COLORS.Text,
+        Text = "0",
+        ZIndex = 114,
+    }, metaTokensRow)
+
+addTextStroke(
+    metaTokensBox,
+    Color3.fromRGB(0, 0, 0),
+    1,
+    0.1
+)
+
+metaTokensBox.FocusLost:Connect(function()
+    CONFIG.MetaTokens =
+        math.max(
+            0,
+            parseShort(metaTokensBox.Text)
+                or 0
+        )
 end)
 
-linhaToggle(abaConfig, "autoTravar", "🔒 Travar no ladrão automático", 7)
+local metaValueRow =
+    makeRow(
+        "💰 Meta de valor",
+        17,
+        "0"
+    )
 
-linhaToggle(abaConfig, "notificacoes", "🔔 Notificações na tela", 8)
+local metaValueBox =
+    make("TextBox", {
+        AnchorPoint = Vector2.new(1, 0.5),
+        Position = UDim2.new(1, 0, 0.5, 0),
+        Size = UDim2.fromOffset(62, 22),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ClearTextOnFocus = false,
+        Font = Enum.Font.GothamBold,
+        TextSize = 9,
+        TextColor3 = COLORS.Text,
+        Text = "0",
+        ZIndex = 114,
+    }, metaValueRow)
 
-linhaTexto(abaConfig, "", 9)
-linhaTexto(abaConfig, "Metas (0 = desligado)", 10)
+addTextStroke(
+    metaValueBox,
+    Color3.fromRGB(0, 0, 0),
+    1,
+    0.1
+)
 
-linhaInput(abaConfig, "💎 Avisar com tokens ≥", metaTokens, 11, function(valor)
-	metaTokens = valor
-	metaTokensAvisada = false
+metaValueBox.FocusLost:Connect(function()
+    CONFIG.MetaValor =
+        math.max(
+            0,
+            parseShort(metaValueBox.Text)
+                or 0
+        )
 end)
 
-linhaInput(abaConfig, "💰 Avisar com valor ≥", metaValor, 12, function(valor)
-	metaValor = valor
-	metaValorAvisada = false
-end)
+local interfaceButton =
+    make("TextButton", {
+        Size = UDim2.new(1, -4, 0, 28),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Font = Enum.Font.GothamBlack,
+        TextSize = 9,
+        Text = "◈ EDITAR INTERFACE / SELECIONAR OBJETOS",
+        TextColor3 = COLORS.Accent,
+        LayoutOrder = 19,
+        ZIndex = 113,
+    }, panelContent)
 
-linhaTexto(abaConfig, "", 13)
-linhaTexto(abaConfig, "Atalhos: F1 esconder • F2 painel • F3 som", 14)
-linhaTexto(abaConfig, "F4 mandar mensagem • F5 ir até o ladrão", 15)
-linhaTexto(abaConfig, "Arraste o card para mover o painel.", 16)
+addTextStroke(
+    interfaceButton,
+    Color3.fromRGB(0, 0, 0),
+    1.2,
+    0
+)
 
--- =========================================================
---                  CONTEÚDO DA ABA STATS
--- =========================================================
+local statsButton =
+    make("TextButton", {
+        Size = UDim2.new(1, -4, 0, 28),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Font = Enum.Font.GothamBlack,
+        TextSize = 9,
+        Text = "📊 ABRIR STATS / ROUBOS",
+        TextColor3 = COLORS.Text,
+        LayoutOrder = 20,
+        ZIndex = 113,
+    }, panelContent)
+
+addTextStroke(
+    statsButton,
+    Color3.fromRGB(0, 0, 0),
+    1.2,
+    0
+)
+
+-- ============================================================
+-- STATS / ROUBOS WINDOW
+-- ============================================================
+
+local statsWindow =
+    make("Frame", {
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.new(1, -10, 0, 88),
+        Size = UDim2.fromOffset(245, 250),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Visible = false,
+        ZIndex = 150,
+    }, gui)
+
+local statsTitle =
+    make("TextLabel", {
+        Size = UDim2.new(1, -28, 0, 24),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBlack,
+        TextSize = 13,
+        Text = "📊 Stats / Roubos",
+        TextColor3 = COLORS.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 151,
+    }, statsWindow)
+
+addTextStroke(
+    statsTitle,
+    Color3.fromRGB(0, 0, 0),
+    1.3,
+    0
+)
+
+local statsClose =
+    make("TextButton", {
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.new(1, 0, 0, 0),
+        Size = UDim2.fromOffset(24, 22),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Font = Enum.Font.GothamBlack,
+        TextSize = 13,
+        Text = "✕",
+        TextColor3 = COLORS.Text,
+        ZIndex = 152,
+    }, statsWindow)
+
+addTextStroke(
+    statsClose,
+    Color3.fromRGB(0, 0, 0),
+    1.2,
+    0
+)
+
+local statsContent =
+    make("Frame", {
+        Position = UDim2.fromOffset(0, 28),
+        Size = UDim2.new(1, 0, 1, -28),
+        BackgroundTransparency = 1,
+        ZIndex = 151,
+    }, statsWindow)
 
 local statsLabels = {}
 
-do
-	local itens = {
-		{ "tempo", "⏱ Tempo de sessão" },
-		{ "tokens", "💎 Tokens agora" },
-		{ "ganho", "📈 Ganho na sessão" },
-		{ "porMin", "⚡ Tokens por minuto" },
-		{ "valor", "💰 Valor a receber" },
-		{ "maiorPreco", "🏆 Maior preço visto" },
-		{ "maximos", "🌈 Vezes no máximo" },
-		{ "roubos", "🚨 Roubos sofridos" },
-	}
+local function makeStatLine(key, labelText, y)
+    local label =
+        make("TextLabel", {
+            Position = UDim2.fromOffset(0, y),
+            Size = UDim2.new(0.58, 0, 0, 20),
+            BackgroundTransparency = 1,
+            Font = Enum.Font.GothamMedium,
+            TextSize = 9,
+            TextColor3 = COLORS.Muted,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Text = labelText,
+            ZIndex = 152,
+        }, statsContent)
 
-	for i, item in ipairs(itens) do
+    local value =
+        make("TextLabel", {
+            AnchorPoint = Vector2.new(1, 0),
+            Position = UDim2.new(1, 0, 0, y),
+            Size = UDim2.new(0.42, 0, 0, 20),
+            BackgroundTransparency = 1,
+            Font = Enum.Font.GothamBold,
+            TextSize = 9,
+            TextColor3 = COLORS.Text,
+            TextXAlignment = Enum.TextXAlignment.Right,
+            Text = "--",
+            ZIndex = 152,
+        }, statsContent)
 
-		local linha = novo("Frame", {
-			Size = UDim2.new(1, -6, 0, 24),
-			BackgroundColor3 = CORES.Fundo2,
-			BackgroundTransparency = 0.35,
-			BorderSizePixel = 0,
-			LayoutOrder = i,
-			ZIndex = 32,
-		}, abaStats)
-
-		cantos(linha, 6)
-
-		novo("TextLabel", {
-			Position = UDim2.new(0, 8, 0, 0),
-			Size = UDim2.new(0.62, -8, 1, 0),
-			BackgroundTransparency = 1,
-			Font = Enum.Font.GothamMedium,
-			TextSize = 11,
-			TextColor3 = CORES.TextoFraco,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			Text = item[2],
-			ZIndex = 33,
-		}, linha)
-
-		statsLabels[item[1]] = novo("TextLabel", {
-			AnchorPoint = Vector2.new(1, 0),
-			Position = UDim2.new(1, -8, 0, 0),
-			Size = UDim2.new(0.38, 0, 1, 0),
-			BackgroundTransparency = 1,
-			Font = Enum.Font.GothamBold,
-			TextSize = 11,
-			TextColor3 = CORES.Texto,
-			TextXAlignment = Enum.TextXAlignment.Right,
-			Text = "--",
-			ZIndex = 33,
-		}, linha)
-
-	end
+    addTextStroke(value, Color3.fromRGB(0, 0, 0), 1, 0.18)
+    statsLabels[key] = value
 end
 
-atualizarLogUI()
-selecionarAba("Config")
+makeStatLine("time", "⏱ Sessão", 0)
+makeStatLine("tokens", "💎 Tokens", 22)
+makeStatLine("gain", "📈 Ganho", 44)
+makeStatLine("perMin", "⚡ Tokens/min", 66)
+makeStatLine("value", "💰 Valor", 88)
+makeStatLine("maxPrice", "🏆 Maior preço", 110)
+makeStatLine("maxTimes", "🌈 Vezes no máximo", 132)
+makeStatLine("robberies", "🚨 Roubos sofridos", 154)
 
--- =========================================================
---                   AÇÕES DOS BOTÕES
--- =========================================================
+local robberyTitle =
+    make("TextLabel", {
+        Position = UDim2.fromOffset(0, 180),
+        Size = UDim2.new(1, 0, 0, 16),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBlack,
+        TextSize = 9,
+        Text = "Últimos roubos",
+        TextColor3 = COLORS.Muted,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 152,
+    }, statsContent)
 
-local function alternarPainel()
+local robberyList =
+    make("ScrollingFrame", {
+        Position = UDim2.fromOffset(0, 198),
+        Size = UDim2.new(1, 0, 1, -198),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ScrollBarThickness = 2,
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        CanvasSize = UDim2.fromOffset(0, 0),
+        ZIndex = 152,
+    }, statsContent)
 
-	painel.Visible = not painel.Visible
+make("UIListLayout", {
+    Padding = UDim.new(0, 2),
+}, robberyList)
 
-	if painel.Visible then
-		medirPainel()
-		painel.Size = UDim2.fromOffset(PAINEL_W, 0)
-		tween(
-			painel,
-			{ Size = UDim2.fromOffset(PAINEL_W, PAINEL_H) },
-			0.2,
-			Enum.EasingStyle.Back
-		)
-	end
+local function refreshRobberyLog()
+    for _, child in ipairs(robberyList:GetChildren()) do
+        if child:IsA("GuiObject") then
+            child:Destroy()
+        end
+    end
 
+    if #logRoubos == 0 then
+        local empty =
+            make("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 18),
+                BackgroundTransparency = 1,
+                Font = Enum.Font.Gotham,
+                TextSize = 8,
+                TextColor3 = COLORS.Muted,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Text = "Nenhum roubo nesta sessão.",
+            }, robberyList)
+
+        addTextStroke(empty, Color3.fromRGB(0, 0, 0), 1, 0.2)
+        return
+    end
+
+    for i = #logRoubos, 1, -1 do
+        local item = logRoubos[i]
+
+        local label =
+            make("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 18),
+                BackgroundTransparency = 1,
+                Font = Enum.Font.GothamMedium,
+                TextSize = 8,
+                TextColor3 = COLORS.Text,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Text = ("%s ×%d • %s"):format(
+                    item.name,
+                    item.times,
+                    item.time
+                ),
+            }, robberyList)
+
+        addTextStroke(label, Color3.fromRGB(0, 0, 0), 1, 0.18)
+    end
 end
 
-btnConfig.MouseButton1Click:Connect(alternarPainel)
+-- ============================================================
+-- EDITOR DE INTERFACE
+-- ============================================================
 
-painelFechar.MouseButton1Click:Connect(function()
-	painel.Visible = false
+local editorGui =
+    make("ScreenGui", {
+        Name = "SamModsUIEditor",
+        ResetOnSpawn = false,
+        IgnoreGuiInset = true,
+        DisplayOrder = 400,
+        Enabled = false,
+    }, PlayerGui)
+
+local selectionArea =
+    make("Frame", {
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Active = true,
+    }, editorGui)
+
+local selectionBox =
+    make("Frame", {
+        BackgroundTransparency = 1,
+        BorderSizePixel = 1,
+        BorderColor3 = COLORS.Accent,
+        Visible = false,
+        ZIndex = 20,
+    }, selectionArea)
+
+local selectionHint =
+    make("TextLabel", {
+        AnchorPoint = Vector2.new(0.5, 0),
+        Position = UDim2.new(0.5, 0, 0, 10),
+        Size = UDim2.fromOffset(330, 30),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBlack,
+        TextSize = 11,
+        TextColor3 = COLORS.Text,
+        Text = "◈ Arraste para selecionar • toque/click para selecionar",
+        ZIndex = 21,
+    }, selectionArea)
+
+addTextStroke(
+    selectionHint,
+    Color3.fromRGB(0, 0, 0),
+    1.2,
+    0
+)
+
+local selectionControls =
+    make("Frame", {
+        AnchorPoint = Vector2.new(0.5, 1),
+        Position = UDim2.new(0.5, 0, 1, -12),
+        Size = UDim2.fromOffset(340, 58),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ZIndex = 30,
+    }, selectionArea)
+
+local selectedCountLabel =
+    make("TextLabel", {
+        Position = UDim2.fromOffset(0, 0),
+        Size = UDim2.fromOffset(110, 22),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBold,
+        TextSize = 9,
+        TextColor3 = COLORS.Text,
+        Text = "0 selecionados",
+        ZIndex = 31,
+    }, selectionControls)
+
+addTextStroke(
+    selectedCountLabel,
+    Color3.fromRGB(0, 0, 0),
+    1,
+    0
+)
+
+local function editorButton(text, x, callback)
+    local b =
+        make("TextButton", {
+            Position = UDim2.fromOffset(x, 25),
+            Size = UDim2.fromOffset(58, 25),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            AutoButtonColor = false,
+            Font = Enum.Font.GothamBlack,
+            TextSize = 11,
+            Text = text,
+            TextColor3 = COLORS.Text,
+            ZIndex = 31,
+        }, selectionControls)
+
+    addTextStroke(
+        b,
+        Color3.fromRGB(0, 0, 0),
+        1,
+        0
+    )
+
+    b.MouseButton1Click:Connect(callback)
+
+    return b
+end
+
+local selectedObjects = {}
+
+local function clearSelection()
+    for obj in pairs(selectedObjects) do
+        local marker = obj:FindFirstChild("SamModsSelectionMarker")
+        if marker then
+            marker:Destroy()
+        end
+    end
+    selectedObjects = {}
+    selectedCountLabel.Text = "0 selecionados"
+end
+
+local function markSelected(obj)
+    if selectedObjects[obj] then
+        return
+    end
+
+    selectedObjects[obj] = true
+
+    local marker =
+        make("SelectionBox", {
+            Name = "SamModsSelectionMarker",
+            Adornee = obj,
+            LineThickness = 0.03,
+            Color3 = COLORS.Accent,
+            SurfaceTransparency = 1,
+        }, obj)
+
+    selectedCountLabel.Text =
+        tostring(
+            (function()
+                local count = 0
+                for _ in pairs(selectedObjects) do
+                    count += 1
+                end
+                return count
+            end)()
+        ) .. " selecionados"
+end
+
+local function selectableObjectsAtPoint(screenPosition)
+    local candidates = {}
+
+    for _, descendant in ipairs(PlayerGui:GetDescendants()) do
+        if descendant:IsA("GuiObject")
+            and descendant.Visible
+            and not isSystemGui(descendant)
+            and descendant.AbsoluteSize.X > 2
+            and descendant.AbsoluteSize.Y > 2 then
+
+            local p = descendant.AbsolutePosition
+            local s = descendant.AbsoluteSize
+
+            if screenPosition.X >= p.X
+                and screenPosition.X <= p.X + s.X
+                and screenPosition.Y >= p.Y
+                and screenPosition.Y <= p.Y + s.Y then
+
+                table.insert(
+                    candidates,
+                    descendant
+                )
+            end
+        end
+    end
+
+    table.sort(
+        candidates,
+        function(a, b)
+            return #a:GetFullName()
+                > #b:GetFullName()
+        end
+    )
+
+    return candidates
+end
+
+local function applySelectionScale(delta)
+    for obj in pairs(selectedObjects) do
+        if obj.Parent then
+            local scale =
+                obj:FindFirstChild(
+                    "SamModsEditorScale"
+                )
+
+            if not scale then
+                scale =
+                    make(
+                        "UIScale",
+                        {
+                            Name =
+                                "SamModsEditorScale",
+                            Scale = 1,
+                        },
+                        obj
+                    )
+            end
+
+            scale.Scale =
+                math.clamp(
+                    scale.Scale + delta,
+                    0.35,
+                    2
+                )
+        else
+            selectedObjects[obj] = nil
+        end
+    end
+end
+
+local function closeEditor()
+    clearSelection()
+    editorGui.Enabled = false
+    settingsPanel.Visible = configOpen
+end
+
+editorButton(
+    "−",
+    115,
+    function()
+        applySelectionScale(-0.1)
+    end
+)
+
+editorButton(
+    "+",
+    177,
+    function()
+        applySelectionScale(0.1)
+    end
+)
+
+editorButton(
+    "RESET",
+    239,
+    function()
+        for obj in pairs(selectedObjects) do
+            local scale =
+                obj:FindFirstChild(
+                    "SamModsEditorScale"
+                )
+
+            if scale then
+                scale.Scale = 1
+            end
+        end
+    end
+)
+
+editorButton(
+    "FECHAR",
+    301,
+    closeEditor
+)
+
+local draggingSelection = false
+local selectionStart = Vector2.zero
+
+local function setSelectionRect(a, b)
+    local x1 = math.min(a.X, b.X)
+    local y1 = math.min(a.Y, b.Y)
+    local x2 = math.max(a.X, b.X)
+    local y2 = math.max(a.Y, b.Y)
+
+    selectionBox.Position =
+        UDim2.fromOffset(
+            x1,
+            y1
+        )
+
+    selectionBox.Size =
+        UDim2.fromOffset(
+            x2 - x1,
+            y2 - y1
+        )
+end
+
+local function collectInRect(a, b)
+    local x1 = math.min(a.X, b.X)
+    local y1 = math.min(a.Y, b.Y)
+    local x2 = math.max(a.X, b.X)
+    local y2 = math.max(a.Y, b.Y)
+
+    for _, descendant in ipairs(PlayerGui:GetDescendants()) do
+        if descendant:IsA("GuiObject")
+            and descendant.Visible
+            and not isSystemGui(descendant)
+            and descendant.AbsoluteSize.X > 3
+            and descendant.AbsoluteSize.Y > 3 then
+
+            local p = descendant.AbsolutePosition
+            local s = descendant.AbsoluteSize
+
+            local overlap =
+                p.X < x2
+                and p.X + s.X > x1
+                and p.Y < y2
+                and p.Y + s.Y > y1
+
+            if overlap then
+                markSelected(descendant)
+            end
+        end
+    end
+end
+
+selectionArea.InputBegan:Connect(function(input)
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1
+        and input.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+
+    draggingSelection = true
+    selectionStart = input.Position
+
+    local under =
+        selectableObjectsAtPoint(
+            input.Position
+        )
+
+    if #under > 0 then
+        clearSelection()
+        markSelected(under[1])
+    else
+        clearSelection()
+    end
 end)
 
--- Arrastar a janela do painel pela barra de título.
-do
-	local arrastando = false
-	local inicio
-	local inicioPos
+UserInputService.InputChanged:Connect(function(input)
+    if not draggingSelection then
+        return
+    end
 
-	painelBarra.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-			arrastando = true
-			inicio = input.Position
-			inicioPos = painel.AbsolutePosition
-		end
-	end)
+    if input.UserInputType ~= Enum.UserInputType.MouseMovement
+        and input.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
 
-	jan:add(UserInputService.InputChanged:Connect(function(input)
+    local delta =
+        input.Position - selectionStart
 
-		if not arrastando then
-			return
-		end
-
-		if input.UserInputType ~= Enum.UserInputType.MouseMovement
-			and input.UserInputType ~= Enum.UserInputType.Touch then
-			return
-		end
-
-		local vp = tela()
-		local delta = input.Position - inicio
-		local x = math.clamp(inicioPos.X + delta.X, 0, math.max(0, vp.X - painel.AbsoluteSize.X))
-		local y = math.clamp(inicioPos.Y + delta.Y, 0, math.max(0, vp.Y - painel.AbsoluteSize.Y))
-
-		painel.AnchorPoint = Vector2.new(0, 0)
-		painel.Position = UDim2.fromOffset(math.floor(x), math.floor(y))
-
-	end))
-
-	jan:add(UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-			arrastando = false
-		end
-	end))
-end
-
-local function alternarDiscreto()
-	modoDiscreto = not modoDiscreto
-	aplicarVisibilidade()
-end
-
-btnOlho.MouseButton1Click:Connect(alternarDiscreto)
-btnRestaurar.MouseButton1Click:Connect(alternarDiscreto)
-
-btnSom.MouseButton1Click:Connect(function()
-
-	S.somAlerta = not S.somAlerta
-	btnSom.Text = S.somAlerta and "🔔" or "🔇"
-	btnSom.BackgroundColor3 = S.somAlerta and CORES.Fundo2 or Color3.fromRGB(90, 30, 30)
-
-	if S.somAlerta then
-		if alertaAtivo then
-			tocar(AlertSound)
-		end
-	else
-		AlertSound:Stop()
-	end
-
+    if delta.Magnitude > 8 then
+        selectionBox.Visible = true
+        setSelectionRect(
+            selectionStart,
+            input.Position
+        )
+    end
 end)
 
--- Clique no card: abre a loja (só se não foi arrasto).
-card.MouseButton1Click:Connect(function()
+UserInputService.InputEnded:Connect(function(input)
+    if not draggingSelection then
+        return
+    end
 
-	if arrastouAgora() then
-		return
-	end
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1
+        and input.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
 
-	tween(cardScale, { Scale = 0.96 }, 0.08).Completed:Connect(function()
-		if not maximoAtivo then
-			tween(cardScale, { Scale = 1 }, 0.12, Enum.EasingStyle.Back)
-		end
-	end)
+    draggingSelection = false
 
-	if OpenTokenExchange then
-		if OpenTokenExchange:IsA("RemoteEvent") then
-			OpenTokenExchange:FireServer()
-		elseif OpenTokenExchange:IsA("BindableEvent") then
-			OpenTokenExchange:Fire()
-		end
-	end
+    if selectionBox.Visible then
+        collectInRect(
+            selectionStart,
+            input.Position
+        )
 
+        selectionBox.Visible = false
+    end
 end)
 
-card.MouseEnter:Connect(function()
-	tween(card, { BackgroundTransparency = 0.12 }, 0.2)
-	if not maximoAtivo then
-		tween(cardStroke, { Transparency = 0.35 }, 0.2)
-	end
+-- ============================================================
+-- AÇÕES DO PAINEL
+-- ============================================================
+
+local function openSettings()
+    configOpen = not configOpen
+
+    if modoDiscreto then
+        configOpen = false
+    end
+
+    settingsPanel.Visible = configOpen
+
+    if configOpen then
+        statsWindow.Visible = false
+
+        -- Reinicia em Configuração no topo.
+        panelContent.CanvasPosition =
+            Vector2.new(0, 0)
+    end
+end
+
+settingsBubble.MouseButton1Click:Connect(openSettings)
+
+closeButton.MouseButton1Click:Connect(function()
+    configOpen = false
+    settingsPanel.Visible = false
 end)
 
-card.MouseLeave:Connect(function()
-	tween(card, { BackgroundTransparency = 0.25 }, 0.2)
-	if not maximoAtivo then
-		tween(cardStroke, { Transparency = 0.8 }, 0.2)
-	end
+interfaceButton.MouseButton1Click:Connect(function()
+    configOpen = false
+    settingsPanel.Visible = false
+    editorGui.Enabled = true
 end)
 
--- =========================================================
---                   ATALHOS DE TECLADO
--- =========================================================
+statsButton.MouseButton1Click:Connect(function()
+    settingsPanel.Visible = false
+    configOpen = false
+    statsWindow.Visible = true
+    refreshRobberyLog()
+end)
 
-jan:add(UserInputService.InputBegan:Connect(function(input, processado)
+statsClose.MouseButton1Click:Connect(function()
+    statsWindow.Visible = false
+end)
 
-	if processado or input.UserInputType ~= Enum.UserInputType.Keyboard then
-		return
-	end
+-- ============================================================
+-- MODO DISCRETO
+-- ============================================================
 
-	local tecla = input.KeyCode
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then
+        return
+    end
 
-	if tecla == CONFIG.teclas.esconderTudo then
+    if input.UserInputType ~= Enum.UserInputType.Keyboard then
+        return
+    end
 
-		modoDiscreto = not modoDiscreto
-		aplicarVisibilidade()
+    if input.KeyCode == Enum.KeyCode.F1 then
+        modoDiscreto = not modoDiscreto
 
-	elseif tecla == CONFIG.teclas.abrirConfig then
+        settingsPanel.Visible = false
+        statsWindow.Visible = false
+        configOpen = false
 
-		alternarPainel()
+        gui.Enabled = not modoDiscreto
+        notifyGui.Enabled = not modoDiscreto
+    end
 
-	elseif tecla == CONFIG.teclas.alternarSom then
+    if input.KeyCode == Enum.KeyCode.F2 then
+        if not modoDiscreto then
+            openSettings()
+        end
+    end
 
-		S.somAlerta = not S.somAlerta
-		btnSom.Text = S.somAlerta and "🔔" or "🔇"
-		if not S.somAlerta then
-			AlertSound:Stop()
-		elseif alertaAtivo then
-			tocar(AlertSound)
-		end
+    if input.KeyCode == Enum.KeyCode.F3 then
+        S.somAlerta = not S.somAlerta
+        if not S.somAlerta then
+            AlertSound:Stop()
+        elseif alertaAtivo then
+            playSound(AlertSound)
+        end
+    end
 
-	elseif tecla == CONFIG.teclas.enviarMensagem then
+    if input.KeyCode == Enum.KeyCode.F4 then
+        -- Continua existindo como atalho do sistema antigo.
+        -- A mensagem manual NÃO ganhou botão.
+        local now = os.clock()
 
-		tentarEnviarMensagem()
+        if now - lastChatMessageAt >= CONFIG.ChatCooldown then
+            lastChatMessageAt = now
+            sendChat(CONFIG.MaxMessage)
+        end
+    end
 
-	elseif tecla == CONFIG.teclas.irAteLadrao then
+    if input.KeyCode == Enum.KeyCode.F5 then
+        if currentThief then
+            local mine = getRoot(LocalPlayer)
+            local target = getRoot(currentThief)
 
-		irAteLadrao()
+            if mine and target then
+                pcall(function()
+                    mine.CFrame =
+                        target.CFrame
+                        * CFrame.new(0, 0, 4)
+                end)
+            end
+        end
+    end
 
-	elseif tecla == CONFIG.teclas.defesaAutomatica then
+    if input.KeyCode == Enum.KeyCode.F6 then
+        S.autoDefender = not S.autoDefender
+        enabled = S.autoDefender
 
-		autoDefesaAtivarDesativar(not autoDefesaAtiva)
+        if enabled
+            and robberyActive
+            and currentThief then
 
-		notificar({
-			titulo = autoDefesaAtiva and "🛡 Auto Defender ATIVADO" or "🛡 Auto Defender DESATIVADO",
-			texto = autoDefesaAtiva
-				and "Usando Baseball Bat quando você for roubado."
-				or "A defesa automática foi desligada.",
-			cor = autoDefesaAtiva and CORES.Ok or CORES.TextoFraco,
-			duracao = 3,
-		})
+            startDefenseLoop()
 
-	end
+        elseif not enabled then
 
-end))
+            releaseFromThief()
+            unequipBat()
+        end
+    end
+end)
 
--- =========================================================
---                    ATUALIZAR DISPLAY
--- =========================================================
+-- ============================================================
+-- ATUALIZAÇÃO DE DISPLAY
+-- ============================================================
 
-local ultimoPreco = PRICE_BASE
+local metaTokensTriggered = false
+local metaValueTriggered = false
 
-local function checarMetas(tokens, valor)
+local function updateStats(tokens, value)
+    local elapsed =
+        math.max(
+            1,
+            os.clock() - stats.inicioSessao
+        )
 
-	if metaTokens > 0 and tokens >= metaTokens and not metaTokensAvisada then
-		metaTokensAvisada = true
-		notificar({
-			titulo = "🎯 Meta de tokens batida",
-			texto = ("Você chegou a %s tokens"):format(formatarNumero(tokens)),
-			cor = CORES.Ok,
-			duracao = 6,
-		})
-	elseif metaTokens > 0 and tokens < metaTokens then
-		metaTokensAvisada = false
-	end
+    local minutes =
+        math.max(
+            1 / 60,
+            elapsed / 60
+        )
 
-	if metaValor > 0 and valor >= metaValor and not metaValorAvisada then
-		metaValorAvisada = true
-		notificar({
-			titulo = "🎯 Meta de valor batida",
-			texto = ("Vendendo agora você recebe $%s"):format(formatarNumero(valor)),
-			cor = CORES.Ok,
-			duracao = 6,
-		})
-	elseif metaValor > 0 and valor < metaValor then
-		metaValorAvisada = false
-	end
+    local initial =
+        stats.tokensIniciais
+        or tokens
 
+    local gain =
+        tokens - initial
+
+    statsLabels.time.Text =
+        ("%02d:%02d"):format(
+            math.floor(elapsed / 60),
+            math.floor(elapsed % 60)
+        )
+
+    statsLabels.tokens.Text =
+        formatNumber(tokens)
+
+    statsLabels.gain.Text =
+        (gain >= 0 and "+" or "")
+        .. formatNumber(gain)
+
+    statsLabels.perMin.Text =
+        formatNumber(
+            gain / minutes
+        )
+
+    statsLabels.value.Text =
+        "$"
+        .. formatNumber(value)
+
+    statsLabels.maxPrice.Text =
+        "$"
+        .. tostring(stats.maiorPreco)
+
+    statsLabels.maxTimes.Text =
+        tostring(
+            stats.vezesNoMaximo
+        )
+
+    statsLabels.robberies.Text =
+        tostring(
+            stats.roubosSofridos
+        )
 end
 
-local function atualizarStats(tokens, valor)
+local function checkGoals(tokens, value)
+    if CONFIG.MetaTokens > 0 then
+        if tokens >= CONFIG.MetaTokens
+            and not metaTokensTriggered then
 
-	if not painel.Visible or abaAtual ~= "Stats" then
-		return
-	end
+            metaTokensTriggered = true
 
-	local minutos = math.max(1 / 60, (os.clock() - stats.inicioSessao) / 60)
-	local ganho = tokens - (stats.tokensIniciais or tokens)
+            notify({
+                title = "🎯 Meta de tokens",
+                text = "Você chegou a "
+                    .. formatNumber(tokens)
+                    .. " tokens.",
+                color = COLORS.Good,
+                duration = 5,
+            })
 
-	statsLabels.tempo.Text = formatarTempo(os.clock() - stats.inicioSessao)
-	statsLabels.tokens.Text = formatarNumero(tokens)
-	statsLabels.ganho.Text = (ganho >= 0 and "+" or "") .. formatarNumero(ganho)
-	statsLabels.porMin.Text = formatarNumero(ganho / minutos)
-	statsLabels.valor.Text = "$" .. formatarNumero(valor)
-	statsLabels.maiorPreco.Text = "$" .. tostring(stats.maiorPreco)
-	statsLabels.maximos.Text = tostring(stats.vezesNoMaximo)
-	statsLabels.roubos.Text = tostring(stats.roubosSofridos)
+        elseif tokens < CONFIG.MetaTokens then
+            metaTokensTriggered = false
+        end
+    end
 
+    if CONFIG.MetaValor > 0 then
+        if value >= CONFIG.MetaValor
+            and not metaValueTriggered then
+
+            metaValueTriggered = true
+
+            notify({
+                title = "🎯 Meta de valor",
+                text =
+                    "Valor atual: $"
+                    .. formatNumber(value),
+                color = COLORS.Good,
+                duration = 5,
+            })
+
+        elseif value < CONFIG.MetaValor then
+            metaValueTriggered = false
+        end
+    end
 end
 
-local function atualizarDisplay()
+local function updateShop()
+    local rawPrice =
+        tonumber(
+            Workspace:GetAttribute("TokenPrice")
+        )
+        or CONFIG.BasePrice
 
-	local precoBruto = lerNumero(Workspace:GetAttribute("TokenPrice"), PRICE_BASE)
-	local preco = math.floor(precoBruto)
+    local price =
+        math.floor(
+            rawPrice
+        )
 
-	local tokens = lerTokens()
-	local valor = tokens * precoBruto
+    local tokens =
+        readTokens()
 
-	if stats.tokensIniciais == nil and tokens > 0 then
-		stats.tokensIniciais = tokens
-	end
+    local value =
+        tokens
+        * rawPrice
 
-	stats.tokensAtuais = tokens
-	stats.maiorPreco = math.max(stats.maiorPreco, preco)
+    if stats.tokensIniciais == nil
+        and tokens > 0 then
 
-	earningsLabel.Text = ("💎 Tokens: %s  •  💰 Receber: $%s"):format(
-		formatarNumero(tokens),
-		formatarNumero(valor)
-	)
+        stats.tokensIniciais = tokens
+    end
 
-	local simbolo = ""
+    stats.tokensAtuais = tokens
+    stats.maiorPreco =
+        math.max(
+            stats.maiorPreco,
+            price
+        )
 
-	if preco > ultimoPreco then
-		simbolo = " ▲"
-	elseif preco < ultimoPreco then
-		simbolo = " ▼"
-	end
+    storePrice.Text =
+        "$"
+        .. tostring(price)
 
-	if preco ~= ultimoPreco then
-		animarPreco()
-		registrarHistorico(preco)
-	end
+    storeEarnings.Text =
+        "Tokens: "
+        .. formatNumber(tokens)
+        .. "  •  Receber: $"
+        .. formatNumber(value)
 
-	priceLabel.Text = ("💰 $%d%s"):format(preco, simbolo)
+    local now =
+        os.time()
 
-	if preco >= PRICE_MAX then
+    local left =
+        CONFIG.EpochSeconds
+        - (now % CONFIG.EpochSeconds)
 
-		if not maximoAtivo then
-			iniciarEfeitoMaximo()
-			notificar({
-				titulo = "🌈 LOJA NO MÁXIMO",
-				texto = ("$%d por token • você recebe $%s"):format(preco, formatarNumero(valor)),
-				rainbow = true,
-				cor = CORES.Max,
-				duracao = 6,
-			})
-		end
+    storeTimer.Text =
+        "Troca em "
+        .. tostring(left)
+        .. "s"
 
-		if S.efeitosMaximo then
-			statusBadge.Text = "⚡ MÁXIMO"
-			statusBadge.TextColor3 = CORES.Texto
-		else
-			aplicarTema(CORES.Max, 0.35, "⚡ MÁXIMO")
-		end
+    if price >= CONFIG.PriceMax then
 
-	elseif preco >= PRICE_SPIKE then
+        if not shopMaxActive then
+            startMaxEffect()
+        end
 
-		pararEfeitoMaximo()
-		aplicarTema(CORES.Spike, 0.4, "🔥 ALTO")
+        storeStatus.Text =
+            "⚡ MÁXIMO"
 
-	elseif preco <= PRICE_MIN then
+    elseif price >= CONFIG.PriceSpike then
 
-		pararEfeitoMaximo()
-		aplicarTema(CORES.Min, 0.4, "📉 MÍNIMO")
+        if shopMaxActive then
+            stopMaxEffect()
+        end
 
-	else
+        storeStatus.Text =
+            "🔥 ALTO"
 
-		pararEfeitoMaximo()
-		aplicarTema(CORES.Base, 0.8, "NORMAL")
+        storePrice.TextColor3 =
+            COLORS.Orange
 
-	end
+        storeStatus.TextColor3 =
+            COLORS.Orange
 
-	checarMetas(tokens, valor)
-	atualizarStats(tokens, valor)
+    elseif price <= CONFIG.PriceMin then
 
-	ultimoPreco = preco
+        if shopMaxActive then
+            stopMaxEffect()
+        end
 
+        storeStatus.Text =
+            "📉 MÍNIMO"
+
+        storePrice.TextColor3 =
+            COLORS.Green
+
+        storeStatus.TextColor3 =
+            COLORS.Green
+
+    else
+
+        if shopMaxActive then
+            stopMaxEffect()
+        end
+
+        storeStatus.Text =
+            "NORMAL"
+
+        storePrice.TextColor3 =
+            COLORS.Accent
+
+        storeStatus.TextColor3 =
+            COLORS.Muted
+    end
+
+    if S.efeitosMaximo
+        and shopMaxActive then
+
+        local c =
+            Rainbow.color()
+
+        storePrice.TextColor3 =
+            c
+
+        storeStatus.TextColor3 =
+            c
+
+        storeIcon.TextColor3 =
+            c
+    end
+
+    if lastPrice ~= nil
+        and lastPrice ~= price then
+
+        tween(
+            storePrice,
+            {
+                TextSize = 19
+            },
+            0.1,
+            Enum.EasingStyle.Back
+        ).Completed:Connect(function()
+
+            tween(
+                storePrice,
+                {
+                    TextSize = 17
+                },
+                0.15
+            )
+        end)
+    end
+
+    lastPrice = price
+
+    checkGoals(tokens, value)
+    updateStats(tokens, value)
 end
 
--- =========================================================
---                 LOOP PRINCIPAL / EVENTOS
--- =========================================================
+-- ============================================================
+-- LOOP
+-- ============================================================
+
+RunService.Heartbeat:Connect(function()
+    if modoDiscreto then
+        storeWidget.Visible = false
+        settingsBubble.Visible = false
+        setaLadrao.Visible = false
+    else
+        storeWidget.Visible = S.lojaVisivel
+        settingsBubble.Visible = true
+
+        updateThiefArrow()
+    end
+end)
+
+LocalPlayer:GetAttributeChangedSignal("Tokens"):Connect(
+    updateShop
+)
+
+Workspace:GetAttributeChangedSignal("TokenPrice"):Connect(
+    updateShop
+)
 
 task.spawn(function()
-
-	while rodando and gui.Parent do
-
-		local agora = os.time()
-		local faltam = EPOCH - (agora % EPOCH)
-
-		timerLabel.Text = ("Troca em %ds"):format(faltam)
-
-		tween(progressBar, { Size = UDim2.new(faltam / EPOCH, 0, 1, 0) }, 0.5, Enum.EasingStyle.Linear)
-
-		atualizarDisplay()
-
-		task.wait(0.5)
-
-	end
-
+    while gui.Parent do
+        updateShop()
+        task.wait(0.5)
+    end
 end)
 
-jan:add(Workspace:GetAttributeChangedSignal("TokenPrice"):Connect(atualizarDisplay))
-jan:add(LocalPlayer:GetAttributeChangedSignal("Tokens"):Connect(atualizarDisplay))
+-- ============================================================
+-- INICIALIZAÇÃO
+-- ============================================================
 
-jan:add(Players.PlayerRemoving:Connect(function(jogador)
-	if jogador == ladraoJogador then
-		autoDefesaParar()
-		pararAlerta()
-		limparEsp()
-	end
-end))
+createLocalTag()
+refreshRobberyLog()
+updateShop()
 
-registrarHistorico(PRICE_BASE)
-atualizarDisplay()
+print(
+    "[SamMods Auto Defender v3] carregado | F6 = Auto Defender | F1 = Discreto | F2 = Config | F3 = Som | F4 = Chat | F5 = Ladrão"
+)
 
-print("[SamMods] TokenPriceWatcher v2 carregado. F1 esconde, F2 abre o painel.")
+-- ============================================================
+-- CLEANUP
+-- ============================================================
+
+script.Destroying:Connect(function()
+    disconnect(followConnection)
+    disconnect(defenseThread)
+
+    disconnectList(thiefEspConnections)
+    disconnectList(tagConnections)
+    disconnectList(maxConnections)
+
+    pcall(function()
+        AlertSound:Stop()
+        NotifySound:Stop()
+    end)
+
+    if instanceMarker and instanceMarker.Parent then
+        instanceMarker:Destroy()
+    end
+end)
