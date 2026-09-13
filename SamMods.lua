@@ -5,7 +5,7 @@
 	=========================================================
 
 	O QUE MUDOU EM RELAÇÃO À v1
-	---------------------------
+	---------------------------.
 	CORREÇÕES
 	  • Tabela de unidades unificada (o formatNumber antigo
 	    repetia "No"/"Oc" em duas faixas e não batia com a
