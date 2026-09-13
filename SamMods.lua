@@ -12,6 +12,45 @@ local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
 -- =========================================================
+--              TAKEOVER DA VERSÃO NOVA
+-- =========================================================
+-- Sempre que esta versão for executada, ela assume o controle
+-- e encerra instâncias antigas conhecidas do mesmo sistema.
+-- Isso evita duas versões do painel/Auto Defender rodando juntas.
+
+local TAKEOVER_VERSION = 3
+local TAKEOVER_ATTRIBUTE = "SamMods_TokenWatcher_Version"
+
+local function encerrarVersoesAntigas()
+	local playerScripts = LocalPlayer:FindFirstChildOfClass("PlayerScripts")
+	if not playerScripts then
+		return
+	end
+
+	local nomesAntigos = {
+		["TokenPriceWatcher"] = true,
+		["TokenPriceWatcher_ATUALIZADO"] = true,
+		["SamMods_TokenWatcher"] = true,
+		["SamMods_TokenWatcher_COM_AutoDefender"] = true,
+		["SamMods_AutoDefender"] = true,
+		["SamMods_AutoDefender_BaseballBat"] = true,
+	}
+
+	for _, child in ipairs(playerScripts:GetChildren()) do
+		if child ~= script
+			and child:IsA("LocalScript")
+			and nomesAntigos[child.Name] then
+			pcall(function()
+				child:Destroy()
+			end)
+		end
+	end
+end
+
+encerrarVersoesAntigas()
+PlayerGui:SetAttribute(TAKEOVER_ATTRIBUTE, TAKEOVER_VERSION)
+
+-- =========================================================
 --                        CONFIG
 -- =========================================================
 -- Tudo que dá pra mexer sem entender o resto do código.
@@ -102,9 +141,13 @@ local CORES = {
 
 local INSTANCE_MARKER = "SamMods_TokenWatcher_Instance"
 
-if PlayerGui:FindFirstChild(INSTANCE_MARKER) then
-	warn("[SamMods] Outra instância já está ativa. Esta foi bloqueada.")
-	return
+-- Se já existe uma instância antiga, a versão nova assume o controle
+-- em vez de simplesmente bloquear a execução.
+local previousMarker = PlayerGui:FindFirstChild(INSTANCE_MARKER)
+if previousMarker then
+	pcall(function()
+		previousMarker:Destroy()
+	end)
 end
 
 local marker = Instance.new("BoolValue")
