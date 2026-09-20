@@ -1,7 +1,7 @@
--- SamMods Auto Defender · v8.8
--- Defesa funcional + lista independente + Token Price Watcher integrado
+-- SamMods Auto Defender · v8.9
+-- Defesa funcional + lista independente + TokenPriceWatcher (completo)
 
-print("[SamMods] Carregando v8.8...")
+print("[SamMods] Carregando v8.9...")
 
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -20,7 +20,7 @@ local Shared     = ReplicatedStorage:WaitForChild("Shared")
 local TopbarPlus = require(Shared:WaitForChild("TopbarPlus"))
 
 -- =========================================================
--- CONFIG DO TOKEN (leitura segura)
+-- CONFIG DO TOKEN — lê tudo do Shared.Config igual ao TokenPriceWatcher
 -- =========================================================
 local Config = nil
 do
@@ -58,11 +58,11 @@ local CORES = {
     idle       = Color3.fromRGB(255, 195, 70),
     off        = Color3.fromRGB(80, 82, 96),
     danger     = Color3.fromRGB(255, 90, 100),
-    -- cores do token
+    -- token (idênticas ao TokenPriceWatcher original)
     tokenMin   = Color3.fromRGB(80, 220, 120),
-    tokenBase  = Color3.fromRGB(0, 200, 255),
-    tokenSpike = Color3.fromRGB(255, 140, 40),
-    tokenMax   = Color3.fromRGB(255, 210, 60),
+    tokenBase  = Color3.fromRGB(0, 170, 255),
+    tokenSpike = Color3.fromRGB(255, 130, 40),
+    tokenMax   = Color3.fromRGB(255, 200, 0),
 }
 
 local CONFIG = {
@@ -86,9 +86,7 @@ if STATE.icon then
 end
 
 local oldGui = PlayerGui:FindFirstChild("SamModsAutoDefender")
-if oldGui then
-    oldGui:Destroy()
-end
+if oldGui then oldGui:Destroy() end
 
 local enabled                 = STATE.enabled or false
 local robberyActive           = false
@@ -111,60 +109,44 @@ local tokenPanelVisible       = true
 -- =========================================================
 -- HELPERS PERSONAGEM
 -- =========================================================
-local function getCharacter()
-    return LocalPlayer.Character
-end
-
+local function getCharacter() return LocalPlayer.Character end
 local function getRoot(player)
-    local character = player and player.Character
-    return character and character:FindFirstChild("HumanoidRootPart")
+    local c = player and player.Character
+    return c and c:FindFirstChild("HumanoidRootPart")
 end
-
 local function getHumanoid()
-    local character = getCharacter()
-    return character and character:FindFirstChildOfClass("Humanoid")
+    local c = getCharacter()
+    return c and c:FindFirstChildOfClass("Humanoid")
 end
 
 local function getBat()
     local character = getCharacter()
     local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
-
     if character then
         local tool = character:FindFirstChild(CONFIG.ToolName)
-        if tool and tool:IsA("Tool") then
-            return tool
-        end
+        if tool and tool:IsA("Tool") then return tool end
     end
-
     if backpack then
         local tool = backpack:FindFirstChild(CONFIG.ToolName)
-        if tool and tool:IsA("Tool") then
-            return tool
-        end
+        if tool and tool:IsA("Tool") then return tool end
     end
 end
 
 local function equipBat()
     local humanoid = getHumanoid()
     local bat = getBat()
-    if not humanoid or not bat then
-        return false
-    end
-
+    if not humanoid or not bat then return false end
     if bat.Parent ~= getCharacter() then
         pcall(function() humanoid:EquipTool(bat) end)
         task.wait(CONFIG.EquipDelay)
     end
-
     local equipped = getCharacter() and getCharacter():FindFirstChild(CONFIG.ToolName)
     return equipped ~= nil and equipped:IsA("Tool")
 end
 
 local function unequipBat()
     local humanoid = getHumanoid()
-    if humanoid then
-        pcall(function() humanoid:UnequipTools() end)
-    end
+    if humanoid then pcall(function() humanoid:UnequipTools() end) end
 end
 
 local function releaseFromThief()
@@ -176,35 +158,19 @@ end
 
 local function followThief(thief)
     releaseFromThief()
-
     local myRoot = getRoot(LocalPlayer)
     local thiefRoot = getRoot(thief)
-    if not myRoot or not thiefRoot then
-        return false
-    end
-
-    pcall(function()
-        myRoot.CFrame = thiefRoot.CFrame * CONFIG.FollowOffset
-    end)
-
+    if not myRoot or not thiefRoot then return false end
+    pcall(function() myRoot.CFrame = thiefRoot.CFrame * CONFIG.FollowOffset end)
     followConnection = RunService.Heartbeat:Connect(function()
         if not enabled or not robberyActive or currentThief ~= thief then
-            releaseFromThief()
-            return
+            releaseFromThief() return
         end
-
         local mine = getRoot(LocalPlayer)
         local target = getRoot(thief)
-        if not mine or not target then
-            releaseFromThief()
-            return
-        end
-
-        pcall(function()
-            mine.CFrame = target.CFrame * CONFIG.FollowOffset
-        end)
+        if not mine or not target then releaseFromThief() return end
+        pcall(function() mine.CFrame = target.CFrame * CONFIG.FollowOffset end)
     end)
-
     return true
 end
 
@@ -212,36 +178,22 @@ local function stopDefense(clearAttempt)
     releaseFromThief()
     currentThief = nil
     unequipBat()
-
-    if clearAttempt then
-        batAttemptedThisRobbery = false
-    end
+    if clearAttempt then batAttemptedThisRobbery = false end
 end
 
 -- =========================================================
--- DEFESA — lógica original que funciona
+-- DEFESA
 -- =========================================================
 local function fireMelee(thief)
-    if not thief or not MeleeHit:IsA("RemoteEvent") then
-        return false
-    end
-
-    return pcall(function()
-        MeleeHit:FireServer(thief)
-    end)
+    if not thief or not MeleeHit:IsA("RemoteEvent") then return false end
+    return pcall(function() MeleeHit:FireServer(thief) end)
 end
 
 local function oneAttempt(thief)
-    if not enabled
-        or not robberyActive
-        or not thief
-        or batAttemptedThisRobbery then
+    if not enabled or not robberyActive or not thief or batAttemptedThisRobbery then
         return
     end
-
-    if thief.Parent ~= Players or not getRoot(thief) then
-        return
-    end
+    if thief.Parent ~= Players or not getRoot(thief) then return end
 
     batAttemptedThisRobbery = true
 
@@ -249,7 +201,6 @@ local function oneAttempt(thief)
         batAttemptedThisRobbery = false
         return
     end
-
     if not followThief(thief) then
         batAttemptedThisRobbery = false
         unequipBat()
@@ -257,12 +208,8 @@ local function oneAttempt(thief)
     end
 
     local started = os.clock()
-
-    while enabled
-        and robberyActive
-        and currentThief == thief
+    while enabled and robberyActive and currentThief == thief
         and (os.clock() - started) < CONFIG.AttemptDuration do
-
         if not getRoot(thief) then break end
         fireMelee(thief)
         task.wait(CONFIG.MeleeInterval)
@@ -270,19 +217,14 @@ local function oneAttempt(thief)
 
     releaseFromThief()
     unequipBat()
-
     if updateUI then updateUI() end
 end
 
 local function startDefenseLoop()
-    if defenseThread
-        or not enabled
-        or not robberyActive
-        or not currentThief
-        or batAttemptedThisRobbery then
+    if defenseThread or not enabled or not robberyActive
+        or not currentThief or batAttemptedThisRobbery then
         return
     end
-
     defenseThread = task.spawn(function()
         oneAttempt(currentThief)
         defenseThread = nil
@@ -291,55 +233,31 @@ local function startDefenseLoop()
 end
 
 local function resolveThief(data)
-    if typeof(data) ~= "table" then
-        return nil
-    end
-
+    if typeof(data) ~= "table" then return nil end
     local ids = {
-        tonumber(data.userId),
-        tonumber(data.attackerUserId),
-        tonumber(data.attackerId),
-        tonumber(data.thiefUserId),
-        tonumber(data.thiefId),
-        tonumber(data.robberUserId),
+        tonumber(data.userId), tonumber(data.attackerUserId),
+        tonumber(data.attackerId), tonumber(data.thiefUserId),
+        tonumber(data.thiefId), tonumber(data.robberUserId),
         tonumber(data.robberId),
     }
-
     for _, id in ipairs(ids) do
         if id then
             local player = Players:GetPlayerByUserId(id)
-            if player and player ~= LocalPlayer then
-                return player
-            end
+            if player and player ~= LocalPlayer then return player end
         end
     end
-
-    local names = {
-        data.attackerName,
-        data.thiefName,
-        data.robberName,
-        data.name,
-    }
-
+    local names = { data.attackerName, data.thiefName, data.robberName, data.name }
     for _, name in ipairs(names) do
         if typeof(name) == "string" and name ~= "" then
             local player = Players:FindFirstChild(name)
-            if player and player ~= LocalPlayer then
-                return player
-            end
+            if player and player ~= LocalPlayer then return player end
         end
     end
 end
 
 local END_KINDS = {
-    result      = true,
-    abort       = true,
-    ["end"]     = true,
-    ended       = true,
-    finish      = true,
-    finished    = true,
-    robbery_end = true,
-    steal_end   = true,
+    result = true, abort = true, ["end"] = true, ended = true,
+    finish = true, finished = true, robbery_end = true, steal_end = true,
 }
 
 -- =========================================================
@@ -351,7 +269,6 @@ local function corner(inst, radius)
     c.Parent = inst
     return c
 end
-
 local function stroke(inst, color, thickness, transparency)
     local s = Instance.new("UIStroke")
     s.Color = color or CORES.primaria
@@ -361,7 +278,6 @@ local function stroke(inst, color, thickness, transparency)
     s.Parent = inst
     return s
 end
-
 local function gradient(inst, c1, c2, rotation)
     local g = Instance.new("UIGradient")
     g.Color = ColorSequence.new(c1, c2)
@@ -369,26 +285,15 @@ local function gradient(inst, c1, c2, rotation)
     g.Parent = inst
     return g
 end
-
 local function tween(inst, props, time, style, dir)
-    local t = TweenService:Create(
-        inst,
-        TweenInfo.new(
-            time or 0.22,
-            style or Enum.EasingStyle.Quint,
-            dir or Enum.EasingDirection.Out
-        ),
-        props
-    )
+    local t = TweenService:Create(inst,
+        TweenInfo.new(time or 0.22, style or Enum.EasingStyle.Quint, dir or Enum.EasingDirection.Out),
+        props)
     t:Play()
     return t
 end
-
 local function makeDraggable(handle, target, stateKey)
-    local dragging = false
-    local dragStart
-    local startPos
-
+    local dragging, dragStart, startPos = false, nil, nil
     handle.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
@@ -397,24 +302,17 @@ local function makeDraggable(handle, target, stateKey)
             startPos = target.Position
         end
     end)
-
     UserInputService.InputChanged:Connect(function(input)
-        if dragging
-            and (input.UserInputType == Enum.UserInputType.MouseMovement
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
             or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - dragStart
             target.Position = UDim2.new(
-                startPos.X.Scale,
-                startPos.X.Offset + delta.X,
-                startPos.Y.Scale,
-                startPos.Y.Offset + delta.Y
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
             )
-            if stateKey then
-                STATE[stateKey] = target.Position
-            end
+            if stateKey then STATE[stateKey] = target.Position end
         end
     end)
-
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
@@ -464,32 +362,6 @@ local function createIntro()
         line.Parent = bg
     end
 
-    local tunnel = Instance.new("Frame")
-    tunnel.AnchorPoint = Vector2.new(0.5, 0.5)
-    tunnel.Position = UDim2.fromScale(0.5, 0.46)
-    tunnel.Size = UDim2.fromOffset(10, 10)
-    tunnel.BackgroundTransparency = 1
-    tunnel.Parent = bg
-
-    local tunnelItems = {}
-    for i = 1, 9 do
-        local sq = Instance.new("Frame")
-        sq.AnchorPoint = Vector2.new(0.5, 0.5)
-        sq.Position = UDim2.fromScale(0.5, 0.5)
-        sq.Size = UDim2.fromOffset(45 + i * 48, 45 + i * 48)
-        sq.BackgroundTransparency = 1
-        sq.BorderSizePixel = 0
-        sq.Rotation = (i % 2 == 0) and 45 or 0
-        sq.Parent = tunnel
-
-        local st = Instance.new("UIStroke")
-        st.Color = i % 2 == 0 and CORES.secundaria or CORES.primaria
-        st.Thickness = i <= 3 and 1.5 or 1
-        st.Transparency = 0.78
-        st.Parent = sq
-        table.insert(tunnelItems, sq)
-    end
-
     local core = Instance.new("Frame")
     core.AnchorPoint = Vector2.new(0.5, 0.5)
     core.Position = UDim2.fromScale(0.5, 0.46)
@@ -520,49 +392,6 @@ local function createIntro()
     shield.TextColor3 = Color3.new(1, 1, 1)
     shield.TextTransparency = 1
     shield.Parent = core
-
-    local scanner = Instance.new("Frame")
-    scanner.AnchorPoint = Vector2.new(0.5, 0.5)
-    scanner.Position = UDim2.fromScale(0.5, 0.46)
-    scanner.Size = UDim2.new(0.85, 0, 0, 1)
-    scanner.BackgroundColor3 = CORES.primaria
-    scanner.BackgroundTransparency = 0.35
-    scanner.BorderSizePixel = 0
-    scanner.Parent = bg
-
-    local modules = {}
-    local moduleTexts = {"CORE", "LINK", "GUARD", "SYNC"}
-    for i, txt in ipairs(moduleTexts) do
-        local side = (i % 2 == 0) and 1 or -1
-        local card = Instance.new("Frame")
-        card.AnchorPoint = Vector2.new(0.5, 0.5)
-        card.Position = UDim2.new(0.5, side * 520, 0.46, (i - 2.5) * 38)
-        card.Size = UDim2.fromOffset(150, 27)
-        card.BackgroundColor3 = Color3.fromRGB(8, 12, 25)
-        card.BackgroundTransparency = 0.18
-        card.BorderSizePixel = 0
-        card.Parent = bg
-        corner(card, 7)
-
-        local cs = Instance.new("UIStroke")
-        cs.Color = side == 1 and CORES.secundaria or CORES.primaria
-        cs.Thickness = 1
-        cs.Transparency = 0.45
-        cs.Parent = card
-
-        local cl = Instance.new("TextLabel")
-        cl.BackgroundTransparency = 1
-        cl.Size = UDim2.new(1, -16, 1, 0)
-        cl.Position = UDim2.fromOffset(8, 0)
-        cl.Font = Enum.Font.Code
-        cl.TextSize = 10
-        cl.TextXAlignment = Enum.TextXAlignment.Left
-        cl.Text = "// " .. txt .. "_MODULE"
-        cl.TextColor3 = side == 1 and CORES.secundaria or CORES.primaria
-        cl.TextTransparency = 1
-        cl.Parent = card
-        table.insert(modules, {card = card, label = cl, side = side})
-    end
 
     local brand = Instance.new("TextLabel")
     brand.AnchorPoint = Vector2.new(0.5, 0)
@@ -626,33 +455,6 @@ local function createIntro()
     status.TextTransparency = 1
     status.Parent = bg
 
-    local particleAlive = true
-    task.spawn(function()
-        local rng = Random.new()
-        while particleAlive and intro.Parent do
-            local dot = Instance.new("Frame")
-            local side = rng:NextInteger(1, 2)
-            dot.Size = UDim2.fromOffset(rng:NextInteger(1, 3), rng:NextInteger(1, 3))
-            dot.Position = side == 1
-                and UDim2.new(-0.02, 0, rng:NextNumber(0.1, 0.9), 0)
-                or UDim2.new(1.02, 0, rng:NextNumber(0.1, 0.9), 0)
-            dot.BackgroundColor3 = side == 1 and CORES.primaria or CORES.secundaria
-            dot.BackgroundTransparency = 0.2
-            dot.BorderSizePixel = 0
-            dot.Parent = bg
-            corner(dot, 2)
-
-            local targetX = side == 1 and 1.02 or -0.02
-            local tw = TweenService:Create(dot, TweenInfo.new(rng:NextNumber(1.4, 2.8), Enum.EasingStyle.Linear), {
-                Position = UDim2.new(targetX, 0, dot.Position.Y.Scale + rng:NextNumber(-0.08, 0.08), 0),
-                BackgroundTransparency = 1,
-            })
-            tw:Play()
-            tw.Completed:Connect(function() if dot then dot:Destroy() end end)
-            task.wait(rng:NextNumber(0.06, 0.14))
-        end
-    end)
-
     local fadeIn = TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
     TweenService:Create(core, fadeIn, {BackgroundTransparency = 0.05}):Play()
     TweenService:Create(shield, fadeIn, {TextTransparency = 0}):Play()
@@ -660,34 +462,13 @@ local function createIntro()
     TweenService:Create(sub, fadeIn, {TextTransparency = 0}):Play()
     TweenService:Create(status, fadeIn, {TextTransparency = 0}):Play()
 
-    for _, item in ipairs(modules) do
-        TweenService:Create(item.card, TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-            Position = UDim2.new(0.5, item.side * 230, item.card.Position.Y.Scale, item.card.Position.Y.Offset),
-        }):Play()
-        TweenService:Create(item.label, fadeIn, {TextTransparency = 0}):Play()
-    end
-
-    for i, sq in ipairs(tunnelItems) do
-        task.delay(i * 0.045, function()
-            if not sq.Parent then return end
-            local original = sq.Size
-            sq.Size = UDim2.fromOffset(original.X.Offset * 0.25, original.Y.Offset * 0.25)
-            sq.Rotation = sq.Rotation + 18
-            TweenService:Create(sq, TweenInfo.new(0.75, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-                Size = original,
-                Rotation = sq.Rotation + 90,
-            }):Play()
-        end)
-    end
-
     local statuses = {
-        {0.12, "CALIBRATING DEFENSE CORE..."},
-        {0.30, "LOADING PLAYER GUARD MODULE..."},
-        {0.52, "SYNCING HACK EVENT MONITOR..."},
-        {0.74, "ARMING AUTO DEFENDER..."},
+        {0.15, "CALIBRATING DEFENSE CORE..."},
+        {0.35, "LOADING PLAYER GUARD MODULE..."},
+        {0.55, "SYNCING HACK EVENT MONITOR..."},
+        {0.78, "ARMING AUTO DEFENDER..."},
         {1.00, "SYSTEM READY  //  SAMMODS ONLINE"},
     }
-
     for _, step in ipairs(statuses) do
         if not intro.Parent then return end
         TweenService:Create(progress, TweenInfo.new(0.32, Enum.EasingStyle.Quart), {
@@ -697,16 +478,6 @@ local function createIntro()
         task.wait(0.38)
     end
 
-    for _ = 1, 2 do
-        TweenService:Create(core, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {Size = UDim2.fromOffset(100, 100)}):Play()
-        TweenService:Create(coreStroke, TweenInfo.new(0.18), {Transparency = 0}):Play()
-        task.wait(0.18)
-        TweenService:Create(core, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {Size = UDim2.fromOffset(86, 86)}):Play()
-        TweenService:Create(coreStroke, TweenInfo.new(0.18), {Transparency = 0.15}):Play()
-        task.wait(0.18)
-    end
-
-    particleAlive = false
     local fadeOut = TweenInfo.new(0.55, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
     TweenService:Create(bg, fadeOut, {BackgroundTransparency = 1}):Play()
     TweenService:Create(brand, fadeOut, {TextTransparency = 1}):Play()
@@ -714,8 +485,6 @@ local function createIntro()
     TweenService:Create(status, fadeOut, {TextTransparency = 1}):Play()
     TweenService:Create(shield, fadeOut, {TextTransparency = 1}):Play()
     TweenService:Create(core, fadeOut, {BackgroundTransparency = 1}):Play()
-    TweenService:Create(scanner, fadeOut, {BackgroundTransparency = 1}):Play()
-
     task.wait(0.6)
     if intro.Parent then intro:Destroy() end
 end
@@ -754,15 +523,10 @@ gradient(panel, CORES.fundo2, CORES.fundo, 100)
 panel.BackgroundTransparency = 1
 panel.Size = UDim2.fromOffset(PANEL_W, 0)
 
-openingPanelTween = tween(
-    panel,
-    {
-        Size = UDim2.fromOffset(PANEL_W, COLLAPSED_H),
-        BackgroundTransparency = 0,
-    },
-    0.45,
-    Enum.EasingStyle.Back
-)
+openingPanelTween = tween(panel, {
+    Size = UDim2.fromOffset(PANEL_W, COLLAPSED_H),
+    BackgroundTransparency = 0,
+}, 0.45, Enum.EasingStyle.Back)
 
 local accentBar = Instance.new("Frame")
 accentBar.Size = UDim2.new(1, 0, 0, 2)
@@ -984,31 +748,13 @@ openTokenBtn.Parent = body
 corner(openTokenBtn, 8)
 stroke(openTokenBtn, CORES.tokenBase, 1, 0.6)
 
-local openEditorBtn = Instance.new("TextButton")
-openEditorBtn.Name = "OpenEditorBtn"
-openEditorBtn.Position = UDim2.fromOffset(10, 166)
-openEditorBtn.Size = UDim2.new(1, -20, 0, 28)
-openEditorBtn.BackgroundColor3 = CORES.destaque
-openEditorBtn.BackgroundTransparency = 0.85
-openEditorBtn.BorderSizePixel = 0
-openEditorBtn.Text = "🎨 UI (em breve)"
-openEditorBtn.Font = Enum.Font.GothamBold
-openEditorBtn.TextSize = 10
-openEditorBtn.TextColor3 = CORES.destaque
-openEditorBtn.AutoButtonColor = false
-openEditorBtn.ZIndex = 3
-openEditorBtn.Parent = body
-corner(openEditorBtn, 8)
-stroke(openEditorBtn, CORES.destaque, 1, 0.6)
-openEditorBtn.Visible = false -- reservado
-
 makeDraggable(header, panel, "panelPos")
 
 -- =========================================================
--- TOKEN PRICE PANEL — bonito e integrado
+-- TOKEN PRICE PANEL — mesma lógica do TokenPriceWatcher
 -- =========================================================
 local TOKEN_W = 235
-local TOKEN_H = 108
+local TOKEN_H = 118
 
 local tokenPanel = Instance.new("Frame")
 tokenPanel.Name = "TokenPanel"
@@ -1016,12 +762,13 @@ tokenPanel.AnchorPoint = Vector2.new(1, 0)
 tokenPanel.Position = STATE.tokenPos or UDim2.new(1, -12, 0, 240)
 tokenPanel.Size = UDim2.fromOffset(TOKEN_W, TOKEN_H)
 tokenPanel.BackgroundColor3 = CORES.fundo
+tokenPanel.BackgroundTransparency = 0.15
 tokenPanel.BorderSizePixel = 0
-tokenPanel.ClipsDescendants = true
+tokenPanel.ClipsDescendants = false
 tokenPanel.ZIndex = 40
 tokenPanel.Parent = gui
-corner(tokenPanel, 14)
-stroke(tokenPanel, CORES.tokenBase, 1.5, 0.4)
+corner(tokenPanel, 12)
+stroke(tokenPanel, CORES.tokenBase, 1.5, 0.8)
 gradient(tokenPanel, CORES.fundo2, CORES.fundo, 100)
 
 local tokenAccent = Instance.new("Frame")
@@ -1030,13 +777,13 @@ tokenAccent.BorderSizePixel = 0
 tokenAccent.BackgroundColor3 = CORES.tokenBase
 tokenAccent.ZIndex = 41
 tokenAccent.Parent = tokenPanel
-corner(tokenAccent, 14)
+corner(tokenAccent, 12)
 gradient(tokenAccent, CORES.tokenBase, CORES.destaque, 0)
 
 local tokenHeader = Instance.new("Frame")
 tokenHeader.Name = "TokenHeader"
-tokenHeader.Size = UDim2.new(1, 0, 0, 26)
-tokenHeader.Position = UDim2.new(0, 0, 0, 2)
+tokenHeader.Size = UDim2.new(1, 0, 0, 24)
+tokenHeader.Position = UDim2.new(0, 0, 0, 4)
 tokenHeader.BackgroundTransparency = 1
 tokenHeader.ZIndex = 41
 tokenHeader.Parent = tokenPanel
@@ -1044,7 +791,7 @@ tokenHeader.Parent = tokenPanel
 local tokenTitleIcon = Instance.new("TextLabel")
 tokenTitleIcon.BackgroundTransparency = 1
 tokenTitleIcon.Position = UDim2.fromOffset(10, 0)
-tokenTitleIcon.Size = UDim2.fromOffset(18, 26)
+tokenTitleIcon.Size = UDim2.fromOffset(18, 24)
 tokenTitleIcon.Font = Enum.Font.GothamBlack
 tokenTitleIcon.TextSize = 12
 tokenTitleIcon.Text = "💰"
@@ -1066,8 +813,8 @@ tokenTitleText.Parent = tokenHeader
 
 local tokenBadge = Instance.new("TextLabel")
 tokenBadge.AnchorPoint = Vector2.new(1, 0.5)
-tokenBadge.Position = UDim2.new(1, -36, 0.5, 0)
-tokenBadge.Size = UDim2.fromOffset(64, 16)
+tokenBadge.Position = UDim2.new(1, -34, 0.5, 0)
+tokenBadge.Size = UDim2.fromOffset(66, 16)
 tokenBadge.BackgroundColor3 = CORES.tokenBase
 tokenBadge.BackgroundTransparency = 0.2
 tokenBadge.Font = Enum.Font.GothamBold
@@ -1106,7 +853,7 @@ tokenDivider.Parent = tokenPanel
 
 local tokenPriceLabel = Instance.new("TextLabel")
 tokenPriceLabel.BackgroundTransparency = 1
-tokenPriceLabel.Position = UDim2.fromOffset(14, 34)
+tokenPriceLabel.Position = UDim2.fromOffset(14, 36)
 tokenPriceLabel.Size = UDim2.new(1, -28, 0, 26)
 tokenPriceLabel.Font = Enum.Font.GothamBlack
 tokenPriceLabel.TextSize = 22
@@ -1118,7 +865,7 @@ tokenPriceLabel.Parent = tokenPanel
 
 local tokenTimerLabel = Instance.new("TextLabel")
 tokenTimerLabel.BackgroundTransparency = 1
-tokenTimerLabel.Position = UDim2.fromOffset(14, 60)
+tokenTimerLabel.Position = UDim2.fromOffset(14, 64)
 tokenTimerLabel.Size = UDim2.new(1, -28, 0, 12)
 tokenTimerLabel.Font = Enum.Font.GothamMedium
 tokenTimerLabel.TextSize = 9
@@ -1129,7 +876,7 @@ tokenTimerLabel.ZIndex = 42
 tokenTimerLabel.Parent = tokenPanel
 
 local tokenProgressBg = Instance.new("Frame")
-tokenProgressBg.Position = UDim2.fromOffset(14, 78)
+tokenProgressBg.Position = UDim2.fromOffset(14, 82)
 tokenProgressBg.Size = UDim2.new(1, -28, 0, 4)
 tokenProgressBg.BackgroundColor3 = Color3.fromRGB(35, 38, 55)
 tokenProgressBg.BorderSizePixel = 0
@@ -1144,12 +891,11 @@ tokenProgressBar.BorderSizePixel = 0
 tokenProgressBar.ZIndex = 43
 tokenProgressBar.Parent = tokenProgressBg
 corner(tokenProgressBar, 4)
-gradient(tokenProgressBar, CORES.tokenBase, CORES.destaque, 0)
 
 local tokenRange = Instance.new("TextLabel")
 tokenRange.BackgroundTransparency = 1
-tokenRange.Position = UDim2.fromOffset(14, 86)
-tokenRange.Size = UDim2.new(1, -28, 0, 12)
+tokenRange.Position = UDim2.fromOffset(14, 92)
+tokenRange.Size = UDim2.new(1, -28, 0, 14)
 tokenRange.Font = Enum.Font.Code
 tokenRange.TextSize = 9
 tokenRange.TextXAlignment = Enum.TextXAlignment.Left
@@ -1162,9 +908,7 @@ tokenRange.Parent = tokenPanel
 
 makeDraggable(tokenHeader, tokenPanel, "tokenPos")
 
--- =========================================================
--- LÓGICA DO TOKEN
--- =========================================================
+-- Lógica do token
 local lastTokenPrice = TOKEN.BASE
 
 local function tokenBounce()
@@ -1184,16 +928,14 @@ local function applyTokenTheme(color, strokeT, badgeText)
     TweenService:Create(tokenBadge, ti, {BackgroundColor3 = color}):Play()
     TweenService:Create(tokenPriceLabel, ti, {TextColor3 = color}):Play()
     TweenService:Create(tokenAccent, ti, {BackgroundColor3 = color}):Play()
-
+    TweenService:Create(tokenPanel, ti, {BackgroundTransparency = 0.15}):Play()
     tokenBadge.Text = badgeText
 end
 
 local function updateTokenDisplay()
     local price = math.floor(readNumber(workspace:GetAttribute("TokenPrice"), TOKEN.BASE))
 
-    if price ~= lastTokenPrice then
-        tokenBounce()
-    end
+    if price ~= lastTokenPrice then tokenBounce() end
 
     local trend = ""
     if price > lastTokenPrice then trend = " ▲"
@@ -1220,39 +962,18 @@ local function setTokenVisible(v)
     openTokenBtn.Text = v and "💰 OCULTAR TOKEN" or "💰 MOSTRAR TOKEN"
 end
 
-openTokenBtn.Activated:Connect(function()
-    setTokenVisible(not tokenPanelVisible)
-end)
+openTokenBtn.Activated:Connect(function() setTokenVisible(not tokenPanelVisible) end)
+openTokenBtn.MouseEnter:Connect(function() tween(openTokenBtn, {BackgroundTransparency = 0.55}, 0.15) end)
+openTokenBtn.MouseLeave:Connect(function() tween(openTokenBtn, {BackgroundTransparency = 0.85}, 0.15) end)
 
-openTokenBtn.MouseEnter:Connect(function()
-    tween(openTokenBtn, {BackgroundTransparency = 0.55}, 0.15)
-end)
-
-openTokenBtn.MouseLeave:Connect(function()
-    tween(openTokenBtn, {BackgroundTransparency = 0.85}, 0.15)
-end)
-
-tokenCloseBtn.Activated:Connect(function()
-    setTokenVisible(false)
-end)
-
+tokenCloseBtn.Activated:Connect(function() setTokenVisible(false) end)
 tokenCloseBtn.MouseEnter:Connect(function()
-    tween(tokenCloseBtn, {
-        BackgroundColor3 = CORES.danger,
-        TextColor3 = Color3.new(1, 1, 1),
-        BackgroundTransparency = 0.3,
-    }, 0.15)
+    tween(tokenCloseBtn, {BackgroundColor3 = CORES.danger, TextColor3 = Color3.new(1,1,1), BackgroundTransparency = 0.3}, 0.15)
 end)
-
 tokenCloseBtn.MouseLeave:Connect(function()
-    tween(tokenCloseBtn, {
-        BackgroundColor3 = CORES.fundo3,
-        TextColor3 = CORES.subtexto,
-        BackgroundTransparency = 0.4,
-    }, 0.15)
+    tween(tokenCloseBtn, {BackgroundColor3 = CORES.fundo3, TextColor3 = CORES.subtexto, BackgroundTransparency = 0.4}, 0.15)
 end)
 
--- Loop do timer + atualização do token
 task.spawn(function()
     while gui.Parent do
         if tokenPanelVisible then
@@ -1261,7 +982,6 @@ task.spawn(function()
             local progress = secondsLeft / TOKEN.EPOCH
 
             tokenTimerLabel.Text = ("Muda em %ds"):format(secondsLeft)
-
             TweenService:Create(tokenProgressBar, TweenInfo.new(0.5, Enum.EasingStyle.Linear), {
                 Size = UDim2.new(progress, 0, 1, 0),
             }):Play()
@@ -1273,13 +993,11 @@ task.spawn(function()
 end)
 
 workspace:GetAttributeChangedSignal("TokenPrice"):Connect(function()
-    if tokenPanelVisible then
-        updateTokenDisplay()
-    end
+    if tokenPanelVisible then updateTokenDisplay() end
 end)
 
 -- =========================================================
--- LISTA SEPARADA / INDEPENDENTE
+-- LISTA SEPARADA
 -- =========================================================
 local LIST_W = 255
 local LIST_H = 305
@@ -1467,66 +1185,37 @@ makeDraggable(listHeader, playersList, "listPos")
 -- TP / CAM
 -- =========================================================
 local function teleportToPlayer(target)
-    if not target or target == LocalPlayer then
-        return false
-    end
-
+    if not target or target == LocalPlayer then return false end
     local myRoot = getRoot(LocalPlayer)
     local theirRoot = getRoot(target)
-
-    if not myRoot or not theirRoot then
-        return false
-    end
-
-    pcall(function()
-        myRoot.CFrame = theirRoot.CFrame * CFrame.new(0, 0, 3)
-    end)
-
+    if not myRoot or not theirRoot then return false end
+    pcall(function() myRoot.CFrame = theirRoot.CFrame * CFrame.new(0, 0, 3) end)
     return true
 end
 
 function stopSpectate()
-    if spectateConn then
-        spectateConn:Disconnect()
-        spectateConn = nil
-    end
-
+    if spectateConn then spectateConn:Disconnect() spectateConn = nil end
     spectating = nil
-
     local myHum = getHumanoid()
     if myHum and workspace.CurrentCamera then
         workspace.CurrentCamera.CameraSubject = myHum
     end
-
-    if updatePlayerList then
-        updatePlayerList()
-    end
+    if updatePlayerList then updatePlayerList() end
 end
 
 local function startSpectate(target)
-    if not target or target == LocalPlayer then
-        return
-    end
-
+    if not target or target == LocalPlayer then return end
     stopSpectate()
     spectating = target
-
     spectateConn = RunService.RenderStepped:Connect(function()
         local t = spectating
-
-        if not t or not t.Parent then
-            stopSpectate()
-            return
-        end
-
+        if not t or not t.Parent then stopSpectate() return end
         local char = t.Character
         local hum = char and char:FindFirstChildOfClass("Humanoid")
-
         if hum and hum.Health > 0 and workspace.CurrentCamera then
             workspace.CurrentCamera.CameraSubject = hum
         end
     end)
-
     updatePlayerList()
 end
 
@@ -1534,10 +1223,7 @@ end
 -- UPDATE LISTA
 -- =========================================================
 function updatePlayerList()
-    if not listScroll then
-        return
-    end
-
+    if not listScroll then return end
     for _, child in ipairs(listScroll:GetChildren()) do
         if child:IsA("Frame") or child:IsA("TextButton") or child:IsA("TextLabel") then
             child:Destroy()
@@ -1545,12 +1231,10 @@ function updatePlayerList()
     end
 
     local others = {}
-
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LocalPlayer then
             local dn = string.lower(p.DisplayName)
             local un = string.lower(p.Name)
-
             if searchTerm == ""
                 or string.find(dn, searchTerm, 1, true)
                 or string.find(un, searchTerm, 1, true) then
@@ -1598,9 +1282,7 @@ function updatePlayerList()
         row.Parent = listScroll
         corner(row, 6)
 
-        if isSelected then
-            stroke(row, CORES.primaria, 1.5, 0.3)
-        end
+        if isSelected then stroke(row, CORES.primaria, 1.5, 0.3) end
 
         local avatar = Instance.new("ImageLabel")
         avatar.Position = UDim2.fromOffset(5, 5)
@@ -1665,92 +1347,48 @@ searchBox:GetPropertyChangedSignal("Text"):Connect(function()
     updatePlayerList()
 end)
 
--- =========================================================
--- BOTÕES DA LISTA
--- =========================================================
+-- Botões da lista
 footerTpBtn.Activated:Connect(function()
     if not selectedPlayer then
-        tween(footerTpBtn, {
-            BackgroundColor3 = CORES.danger,
-            TextColor3 = CORES.danger,
-        }, 0.1)
-
+        tween(footerTpBtn, {BackgroundColor3 = CORES.danger, TextColor3 = CORES.danger}, 0.1)
         task.delay(0.3, function()
-            tween(footerTpBtn, {
-                BackgroundColor3 = CORES.primaria,
-                TextColor3 = CORES.primaria,
-            }, 0.25)
+            tween(footerTpBtn, {BackgroundColor3 = CORES.primaria, TextColor3 = CORES.primaria}, 0.25)
         end)
         return
     end
-
     if teleportToPlayer(selectedPlayer) then
-        tween(footerTpBtn, {
-            BackgroundColor3 = CORES.on,
-            TextColor3 = CORES.on,
-            BackgroundTransparency = 0.3,
-        }, 0.1)
-
+        tween(footerTpBtn, {BackgroundColor3 = CORES.on, TextColor3 = CORES.on, BackgroundTransparency = 0.3}, 0.1)
         task.delay(0.4, function()
-            tween(footerTpBtn, {
-                BackgroundColor3 = CORES.primaria,
-                TextColor3 = CORES.primaria,
-                BackgroundTransparency = 0.75,
-            }, 0.25)
+            tween(footerTpBtn, {BackgroundColor3 = CORES.primaria, TextColor3 = CORES.primaria, BackgroundTransparency = 0.75}, 0.25)
         end)
     end
 end)
 
 footerCamBtn.Activated:Connect(function()
     if not selectedPlayer then
-        tween(footerCamBtn, {
-            BackgroundColor3 = CORES.danger,
-            TextColor3 = CORES.danger,
-        }, 0.1)
-
+        tween(footerCamBtn, {BackgroundColor3 = CORES.danger, TextColor3 = CORES.danger}, 0.1)
         task.delay(0.3, function()
-            tween(footerCamBtn, {
-                BackgroundColor3 = CORES.secundaria,
-                TextColor3 = CORES.secundaria,
-            }, 0.25)
+            tween(footerCamBtn, {BackgroundColor3 = CORES.secundaria, TextColor3 = CORES.secundaria}, 0.25)
         end)
         return
     end
-
-    if spectating == selectedPlayer then
-        stopSpectate()
-    else
-        startSpectate(selectedPlayer)
-    end
+    if spectating == selectedPlayer then stopSpectate() else startSpectate(selectedPlayer) end
 end)
 
 -- =========================================================
--- UPDATE UI / STATUS
+-- UPDATE UI
 -- =========================================================
 local function stopPulse()
-    if pulseThread then
-        task.cancel(pulseThread)
-        pulseThread = nil
-    end
+    if pulseThread then task.cancel(pulseThread) pulseThread = nil end
 end
 
 local function startPulse()
     stopPulse()
-
     pulseThread = task.spawn(function()
         while enabled do
-            tween(statusDotGlow, {
-                Transparency = 0.2,
-                Thickness = 4,
-            }, 0.7)
-
+            tween(statusDotGlow, {Transparency = 0.2, Thickness = 4}, 0.7)
             task.wait(0.7)
-
-            tween(statusDotGlow, {
-                Transparency = 0.75,
-                Thickness = 2.5,
-            }, 0.7)
-
+            tween(statusDotGlow, {Transparency = 0.75, Thickness = 2.5}, 0.7)
             task.wait(0.7)
         end
     end)
@@ -1759,9 +1397,7 @@ end
 function updateUI()
     if enabled then
         tween(toggleBtn, {BackgroundColor3 = CORES.on}, 0.2)
-        tween(toggleKnob, {
-            Position = UDim2.new(1, -23, 0.5, -10),
-        }, 0.2, Enum.EasingStyle.Back)
+        tween(toggleKnob, {Position = UDim2.new(1, -23, 0.5, -10)}, 0.2, Enum.EasingStyle.Back)
 
         if robberyActive and batAttemptedThisRobbery then
             infoStatusLabel.Text = "⚔ GOLPE FEITO"
@@ -1784,9 +1420,7 @@ function updateUI()
         end
     else
         tween(toggleBtn, {BackgroundColor3 = CORES.off}, 0.2)
-        tween(toggleKnob, {
-            Position = UDim2.new(0, 3, 0.5, -10),
-        }, 0.2, Enum.EasingStyle.Back)
+        tween(toggleKnob, {Position = UDim2.new(0, 3, 0.5, -10)}, 0.2, Enum.EasingStyle.Back)
         infoStatusLabel.Text = "⭕ DESATIVADO"
         tween(infoStatusLabel, {TextColor3 = CORES.subtexto}, 0.2)
         statusDot.BackgroundColor3 = CORES.off
@@ -1808,98 +1442,58 @@ end
 local function setEnabled(value)
     enabled = value
     STATE.enabled = value
-
     if not enabled then
         stopDefense()
     elseif robberyActive and currentThief then
         startDefenseLoop()
     end
-
     updateUI()
 end
 
--- =========================================================
--- MINIMIZAR
--- =========================================================
+-- Minimizar
 local function setMinimized(state)
     minimized = state
-
     if openingPanelTween then
-        pcall(function()
-            openingPanelTween:Cancel()
-        end)
+        pcall(function() openingPanelTween:Cancel() end)
         openingPanelTween = nil
     end
-
     local targetH = state and COLLAPSED_H or EXPANDED_H
-
     tween(panel, {
         Size = UDim2.fromOffset(PANEL_W, targetH),
         BackgroundTransparency = 0,
     }, 0.28, Enum.EasingStyle.Quint)
-
     minimizeBtn.Text = state and "+" or "-"
 end
 
-minimizeBtn.Activated:Connect(function()
-    setMinimized(not minimized)
-end)
-
+minimizeBtn.Activated:Connect(function() setMinimized(not minimized) end)
 minimizeBtn.MouseEnter:Connect(function()
-    tween(minimizeBtn, {
-        BackgroundTransparency = 0.1,
-        TextColor3 = CORES.destaque,
-        BackgroundColor3 = CORES.secundaria,
-    }, 0.15)
+    tween(minimizeBtn, {BackgroundTransparency = 0.1, TextColor3 = CORES.destaque, BackgroundColor3 = CORES.secundaria}, 0.15)
 end)
-
 minimizeBtn.MouseLeave:Connect(function()
-    tween(minimizeBtn, {
-        BackgroundTransparency = 0.3,
-        TextColor3 = CORES.primaria,
-        BackgroundColor3 = CORES.fundo3,
-    }, 0.15)
+    tween(minimizeBtn, {BackgroundTransparency = 0.3, TextColor3 = CORES.primaria, BackgroundColor3 = CORES.fundo3}, 0.15)
 end)
 
--- =========================================================
--- BOTÕES PRINCIPAIS
--- =========================================================
-toggleBtn.Activated:Connect(function()
-    setEnabled(not enabled)
-end)
+-- Botões principais
+toggleBtn.Activated:Connect(function() setEnabled(not enabled) end)
 
 stopBtn.Activated:Connect(function()
     tween(stopBtn, {BackgroundTransparency = 0.4}, 0.08)
-
     task.delay(0.15, function()
-        if stopBtn.Parent then
-            tween(stopBtn, {BackgroundTransparency = 0.85}, 0.2)
-        end
+        if stopBtn.Parent then tween(stopBtn, {BackgroundTransparency = 0.85}, 0.2) end
     end)
-
     enabled = false
     STATE.enabled = false
     releaseFromThief()
     unequipBat()
     updateUI()
 end)
+stopBtn.MouseEnter:Connect(function() tween(stopBtn, {BackgroundTransparency = 0.65}, 0.15) end)
+stopBtn.MouseLeave:Connect(function() tween(stopBtn, {BackgroundTransparency = 0.85}, 0.15) end)
 
-stopBtn.MouseEnter:Connect(function()
-    tween(stopBtn, {BackgroundTransparency = 0.65}, 0.15)
-end)
-
-stopBtn.MouseLeave:Connect(function()
-    tween(stopBtn, {BackgroundTransparency = 0.85}, 0.15)
-end)
-
--- =========================================================
--- ABRIR/FECHAR LISTA — janela independente
--- =========================================================
+-- Lista
 local function computeListPos()
     if STATE.listPos then return STATE.listPos end
-
     local panelLeftEdge = panel.Position.X.Offset - PANEL_W
-
     return UDim2.new(
         panel.Position.X.Scale,
         panelLeftEdge - (LIST_W + 8),
@@ -1910,74 +1504,38 @@ end
 
 local function closePlayerList()
     playersListOpen = false
-
-    tween(playersList, {
-        Size = UDim2.fromOffset(0, LIST_H),
-    }, 0.2, Enum.EasingStyle.Quint)
-
+    tween(playersList, {Size = UDim2.fromOffset(0, LIST_H)}, 0.2, Enum.EasingStyle.Quint)
     task.delay(0.22, function()
-        if not playersListOpen then
-            playersList.Visible = false
-        end
+        if not playersListOpen then playersList.Visible = false end
     end)
-
     openListBtn.Text = "👥 ABRIR LISTA"
-
     if spectating then stopSpectate() end
     selectedPlayer = nil
 end
 
 local function openPlayerList()
     playersListOpen = true
-
-    if not STATE.listPos then
-        STATE.listPos = computeListPos()
-    end
+    if not STATE.listPos then STATE.listPos = computeListPos() end
     playersList.Position = STATE.listPos
-
     playersList.Visible = true
     playersList.Size = UDim2.fromOffset(0, LIST_H)
-
-    tween(playersList, {
-        Size = UDim2.fromOffset(LIST_W, LIST_H),
-    }, 0.3, Enum.EasingStyle.Back)
-
+    tween(playersList, {Size = UDim2.fromOffset(LIST_W, LIST_H)}, 0.3, Enum.EasingStyle.Back)
     openListBtn.Text = "👥 FECHAR LISTA"
     updatePlayerList()
 end
 
 openListBtn.Activated:Connect(function()
-    if playersListOpen or playersList.Visible then
-        closePlayerList()
-    else
-        openPlayerList()
-    end
+    if playersListOpen or playersList.Visible then closePlayerList() else openPlayerList() end
 end)
-
-openListBtn.MouseEnter:Connect(function()
-    tween(openListBtn, {BackgroundTransparency = 0.55}, 0.15)
-end)
-
-openListBtn.MouseLeave:Connect(function()
-    tween(openListBtn, {BackgroundTransparency = 0.85}, 0.15)
-end)
+openListBtn.MouseEnter:Connect(function() tween(openListBtn, {BackgroundTransparency = 0.55}, 0.15) end)
+openListBtn.MouseLeave:Connect(function() tween(openListBtn, {BackgroundTransparency = 0.85}, 0.15) end)
 
 listCloseBtn.Activated:Connect(closePlayerList)
-
 listCloseBtn.MouseEnter:Connect(function()
-    tween(listCloseBtn, {
-        BackgroundColor3 = CORES.danger,
-        TextColor3 = Color3.new(1, 1, 1),
-        BackgroundTransparency = 0.3,
-    }, 0.15)
+    tween(listCloseBtn, {BackgroundColor3 = CORES.danger, TextColor3 = Color3.new(1,1,1), BackgroundTransparency = 0.3}, 0.15)
 end)
-
 listCloseBtn.MouseLeave:Connect(function()
-    tween(listCloseBtn, {
-        BackgroundColor3 = CORES.fundo3,
-        TextColor3 = CORES.subtexto,
-        BackgroundTransparency = 0.4,
-    }, 0.15)
+    tween(listCloseBtn, {BackgroundColor3 = CORES.fundo3, TextColor3 = CORES.subtexto, BackgroundTransparency = 0.4}, 0.15)
 end)
 
 -- =========================================================
@@ -2011,7 +1569,6 @@ pcall(function() defenderIcon:select() end)
 defenderIcon:bindEvent("clicked", function()
     guiVisible = not guiVisible
     gui.Enabled = guiVisible
-
     if guiVisible then
         pcall(function() defenderIcon:select() end)
         defenderIcon:setCaption("SamMods ON")
@@ -2025,18 +1582,11 @@ end)
 -- HOTKEYS
 -- =========================================================
 UserInputService.InputBegan:Connect(function(input, processed)
-    if processed then
-        return
-    end
-
+    if processed then return end
     if input.KeyCode == CONFIG.ToggleKey then
         setEnabled(not enabled)
     elseif input.KeyCode == CONFIG.ListToggleKey then
-        if playersList.Visible then
-            closePlayerList()
-        else
-            openPlayerList()
-        end
+        if playersList.Visible then closePlayerList() else openPlayerList() end
     elseif input.KeyCode == CONFIG.TokenToggleKey then
         setTokenVisible(not tokenPanelVisible)
     end
@@ -2046,46 +1596,27 @@ end)
 -- HACKEVENT
 -- =========================================================
 HackEvent.OnClientEvent:Connect(function(data)
-    if typeof(data) ~= "table" then
-        return
-    end
-
+    if typeof(data) ~= "table" then return end
     local kind = tostring(data.kind or ""):lower()
     local action = tostring(data.action or ""):lower()
     local eventType = tostring(data.type or ""):lower()
     local role = tostring(data.role or ""):lower()
 
-    if END_KINDS[kind]
-        or END_KINDS[action]
-        or END_KINDS[eventType] then
-
+    if END_KINDS[kind] or END_KINDS[action] or END_KINDS[eventType] then
         robberyActive = false
         stopDefense(true)
         updateUI()
         return
     end
-
-    if kind ~= "phase" then
-        return
-    end
-
+    if kind ~= "phase" then return end
     if role == "victim" then
         local thief = resolveThief(data)
-        if not thief then
-            return
-        end
-
-        if not robberyActive then
-            batAttemptedThisRobbery = false
-        end
-
+        if not thief then return end
+        if not robberyActive then batAttemptedThisRobbery = false end
         robberyActive = true
         currentThief = thief
         updateUI()
-
-        if enabled then
-            startDefenseLoop()
-        end
+        if enabled then startDefenseLoop() end
     end
 end)
 
@@ -2098,32 +1629,16 @@ Players.PlayerRemoving:Connect(function(player)
         stopDefense(true)
         updateUI()
     end
-
-    if updatePlayerList then
-        updatePlayerList()
-    end
-
-    if spectating == player then
-        stopSpectate()
-    end
-
-    if selectedPlayer == player then
-        selectedPlayer = nil
-    end
+    if updatePlayerList then updatePlayerList() end
+    if spectating == player then stopSpectate() end
+    if selectedPlayer == player then selectedPlayer = nil end
 end)
-
 Players.PlayerAdded:Connect(function()
-    if updatePlayerList then
-        updatePlayerList()
-    end
+    if updatePlayerList then updatePlayerList() end
 end)
-
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(0.5)
-
-    if enabled and robberyActive and currentThief then
-        startDefenseLoop()
-    end
+    if enabled and robberyActive and currentThief then startDefenseLoop() end
 end)
 
 -- =========================================================
@@ -2135,7 +1650,6 @@ task.spawn(function()
             robberyActive = false
             stopDefense()
         end
-
         updateUI()
         task.wait(0.15)
     end
@@ -2145,32 +1659,23 @@ updateUI()
 updatePlayerList()
 updateTokenDisplay()
 
-print("[SamMods] v8.8 carregado com sucesso!")
+print("[SamMods] v8.9 carregado com sucesso!")
 
 script.Destroying:Connect(function()
     introAlive = false
     enabled = false
     robberyActive = false
-
     if openingPanelTween then
         pcall(function() openingPanelTween:Cancel() end)
         openingPanelTween = nil
     end
-
     releaseFromThief()
     unequipBat()
     stopPulse()
     stopSpectate()
-
-    if gui then
-        gui:Destroy()
-    end
-
+    if gui then gui:Destroy() end
     local intro = PlayerGui:FindFirstChild("SamModsIntro")
-    if intro then
-        intro:Destroy()
-    end
-
+    if intro then intro:Destroy() end
     if STATE.icon then
         pcall(function() STATE.icon:destroy() end)
         STATE.icon = nil
