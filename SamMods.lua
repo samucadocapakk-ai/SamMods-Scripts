@@ -1,7 +1,7 @@
--- SamMods Auto Defender · v8.7
--- Lista independente (não fecha o painel) + defesa com a lógica original que funcionava
+-- SamMods Auto Defender · v8.8
+-- Defesa funcional + lista independente + Token Price Watcher integrado
 
-print("[SamMods] Carregando v8.7...")
+print("[SamMods] Carregando v8.8...")
 
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -19,6 +19,32 @@ local MeleeHit  = Remotes:WaitForChild("MeleeHit")
 local Shared     = ReplicatedStorage:WaitForChild("Shared")
 local TopbarPlus = require(Shared:WaitForChild("TopbarPlus"))
 
+-- =========================================================
+-- CONFIG DO TOKEN (leitura segura)
+-- =========================================================
+local Config = nil
+do
+    local ok, mod = pcall(function()
+        return require(Shared:WaitForChild("Config", 5))
+    end)
+    if ok and typeof(mod) == "table" then
+        Config = mod
+    end
+end
+
+local function readNumber(value, default)
+    local n = tonumber(value)
+    return n or default
+end
+
+local TOKEN = {
+    MIN   = math.floor(readNumber(Config and Config.Tokens and Config.Tokens.priceMin, 5)),
+    MAX   = math.floor(readNumber(Config and Config.Tokens and Config.Tokens.priceMax, 15)),
+    SPIKE = math.floor(readNumber(Config and Config.Tokens and Config.Tokens.spikePrice, 12)),
+    BASE  = math.floor(readNumber(Config and Config.Tokens and Config.Tokens.basePrice, 10)),
+    EPOCH = math.max(1, math.floor(readNumber(Config and Config.Tokens and Config.Tokens.priceEpochSeconds, 30))),
+}
+
 local CORES = {
     primaria   = Color3.fromRGB(0, 210, 255),
     secundaria = Color3.fromRGB(150, 90, 255),
@@ -32,6 +58,11 @@ local CORES = {
     idle       = Color3.fromRGB(255, 195, 70),
     off        = Color3.fromRGB(80, 82, 96),
     danger     = Color3.fromRGB(255, 90, 100),
+    -- cores do token
+    tokenMin   = Color3.fromRGB(80, 220, 120),
+    tokenBase  = Color3.fromRGB(0, 200, 255),
+    tokenSpike = Color3.fromRGB(255, 140, 40),
+    tokenMax   = Color3.fromRGB(255, 210, 60),
 }
 
 local CONFIG = {
@@ -43,6 +74,7 @@ local CONFIG = {
     MeleeInterval   = 0.10,
     ToggleKey       = Enum.KeyCode.F6,
     ListToggleKey   = Enum.KeyCode.F7,
+    TokenToggleKey  = Enum.KeyCode.F8,
 }
 
 _G.SamModsDefender = _G.SamModsDefender or {}
@@ -74,6 +106,7 @@ local pulseThread             = nil
 local searchTerm              = ""
 local openingPanelTween       = nil
 local introAlive              = true
+local tokenPanelVisible       = true
 
 -- =========================================================
 -- HELPERS PERSONAGEM
@@ -186,7 +219,7 @@ local function stopDefense(clearAttempt)
 end
 
 -- =========================================================
--- DEFESA — lógica original que funcionava
+-- DEFESA — lógica original que funciona
 -- =========================================================
 local function fireMelee(thief)
     if not thief or not MeleeHit:IsA("RemoteEvent") then
@@ -210,7 +243,6 @@ local function oneAttempt(thief)
         return
     end
 
-    -- GUARD: só uma tentativa por roubo.
     batAttemptedThisRobbery = true
 
     if not equipBat() then
@@ -360,7 +392,6 @@ local function makeDraggable(handle, target, stateKey)
     handle.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
-
             dragging = true
             dragStart = input.Position
             startPos = target.Position
@@ -371,16 +402,13 @@ local function makeDraggable(handle, target, stateKey)
         if dragging
             and (input.UserInputType == Enum.UserInputType.MouseMovement
             or input.UserInputType == Enum.UserInputType.Touch) then
-
             local delta = input.Position - dragStart
-
             target.Position = UDim2.new(
                 startPos.X.Scale,
                 startPos.X.Offset + delta.X,
                 startPos.Y.Scale,
                 startPos.Y.Offset + delta.Y
             )
-
             if stateKey then
                 STATE[stateKey] = target.Position
             end
@@ -709,7 +737,7 @@ gui.Parent = PlayerGui
 -- =========================================================
 local PANEL_W = 240
 local COLLAPSED_H = 46
-local EXPANDED_H = 184
+local EXPANDED_H = 216
 
 local panel = Instance.new("Frame")
 panel.Name = "Panel"
@@ -939,8 +967,316 @@ openListBtn.Parent = body
 corner(openListBtn, 8)
 stroke(openListBtn, CORES.secundaria, 1, 0.6)
 
--- Painel arrastável pelo header
+local openTokenBtn = Instance.new("TextButton")
+openTokenBtn.Name = "OpenTokenBtn"
+openTokenBtn.Position = UDim2.fromOffset(10, 130)
+openTokenBtn.Size = UDim2.new(1, -20, 0, 28)
+openTokenBtn.BackgroundColor3 = CORES.tokenBase
+openTokenBtn.BackgroundTransparency = 0.85
+openTokenBtn.BorderSizePixel = 0
+openTokenBtn.Text = "💰 OCULTAR TOKEN"
+openTokenBtn.Font = Enum.Font.GothamBold
+openTokenBtn.TextSize = 10
+openTokenBtn.TextColor3 = CORES.tokenBase
+openTokenBtn.AutoButtonColor = false
+openTokenBtn.ZIndex = 3
+openTokenBtn.Parent = body
+corner(openTokenBtn, 8)
+stroke(openTokenBtn, CORES.tokenBase, 1, 0.6)
+
+local openEditorBtn = Instance.new("TextButton")
+openEditorBtn.Name = "OpenEditorBtn"
+openEditorBtn.Position = UDim2.fromOffset(10, 166)
+openEditorBtn.Size = UDim2.new(1, -20, 0, 28)
+openEditorBtn.BackgroundColor3 = CORES.destaque
+openEditorBtn.BackgroundTransparency = 0.85
+openEditorBtn.BorderSizePixel = 0
+openEditorBtn.Text = "🎨 UI (em breve)"
+openEditorBtn.Font = Enum.Font.GothamBold
+openEditorBtn.TextSize = 10
+openEditorBtn.TextColor3 = CORES.destaque
+openEditorBtn.AutoButtonColor = false
+openEditorBtn.ZIndex = 3
+openEditorBtn.Parent = body
+corner(openEditorBtn, 8)
+stroke(openEditorBtn, CORES.destaque, 1, 0.6)
+openEditorBtn.Visible = false -- reservado
+
 makeDraggable(header, panel, "panelPos")
+
+-- =========================================================
+-- TOKEN PRICE PANEL — bonito e integrado
+-- =========================================================
+local TOKEN_W = 235
+local TOKEN_H = 108
+
+local tokenPanel = Instance.new("Frame")
+tokenPanel.Name = "TokenPanel"
+tokenPanel.AnchorPoint = Vector2.new(1, 0)
+tokenPanel.Position = STATE.tokenPos or UDim2.new(1, -12, 0, 240)
+tokenPanel.Size = UDim2.fromOffset(TOKEN_W, TOKEN_H)
+tokenPanel.BackgroundColor3 = CORES.fundo
+tokenPanel.BorderSizePixel = 0
+tokenPanel.ClipsDescendants = true
+tokenPanel.ZIndex = 40
+tokenPanel.Parent = gui
+corner(tokenPanel, 14)
+stroke(tokenPanel, CORES.tokenBase, 1.5, 0.4)
+gradient(tokenPanel, CORES.fundo2, CORES.fundo, 100)
+
+local tokenAccent = Instance.new("Frame")
+tokenAccent.Size = UDim2.new(1, 0, 0, 2)
+tokenAccent.BorderSizePixel = 0
+tokenAccent.BackgroundColor3 = CORES.tokenBase
+tokenAccent.ZIndex = 41
+tokenAccent.Parent = tokenPanel
+corner(tokenAccent, 14)
+gradient(tokenAccent, CORES.tokenBase, CORES.destaque, 0)
+
+local tokenHeader = Instance.new("Frame")
+tokenHeader.Name = "TokenHeader"
+tokenHeader.Size = UDim2.new(1, 0, 0, 26)
+tokenHeader.Position = UDim2.new(0, 0, 0, 2)
+tokenHeader.BackgroundTransparency = 1
+tokenHeader.ZIndex = 41
+tokenHeader.Parent = tokenPanel
+
+local tokenTitleIcon = Instance.new("TextLabel")
+tokenTitleIcon.BackgroundTransparency = 1
+tokenTitleIcon.Position = UDim2.fromOffset(10, 0)
+tokenTitleIcon.Size = UDim2.fromOffset(18, 26)
+tokenTitleIcon.Font = Enum.Font.GothamBlack
+tokenTitleIcon.TextSize = 12
+tokenTitleIcon.Text = "💰"
+tokenTitleIcon.TextColor3 = CORES.tokenBase
+tokenTitleIcon.ZIndex = 42
+tokenTitleIcon.Parent = tokenHeader
+
+local tokenTitleText = Instance.new("TextLabel")
+tokenTitleText.BackgroundTransparency = 1
+tokenTitleText.Position = UDim2.fromOffset(30, 0)
+tokenTitleText.Size = UDim2.new(1, -100, 1, 0)
+tokenTitleText.Font = Enum.Font.GothamBlack
+tokenTitleText.TextSize = 10
+tokenTitleText.TextXAlignment = Enum.TextXAlignment.Left
+tokenTitleText.TextColor3 = CORES.texto
+tokenTitleText.Text = "PREÇO DO TOKEN"
+tokenTitleText.ZIndex = 42
+tokenTitleText.Parent = tokenHeader
+
+local tokenBadge = Instance.new("TextLabel")
+tokenBadge.AnchorPoint = Vector2.new(1, 0.5)
+tokenBadge.Position = UDim2.new(1, -36, 0.5, 0)
+tokenBadge.Size = UDim2.fromOffset(64, 16)
+tokenBadge.BackgroundColor3 = CORES.tokenBase
+tokenBadge.BackgroundTransparency = 0.2
+tokenBadge.Font = Enum.Font.GothamBold
+tokenBadge.TextSize = 8
+tokenBadge.TextColor3 = Color3.fromRGB(15, 15, 15)
+tokenBadge.Text = "NORMAL"
+tokenBadge.ZIndex = 42
+tokenBadge.Parent = tokenHeader
+corner(tokenBadge, 6)
+
+local tokenCloseBtn = Instance.new("TextButton")
+tokenCloseBtn.Name = "TokenCloseBtn"
+tokenCloseBtn.AnchorPoint = Vector2.new(1, 0.5)
+tokenCloseBtn.Position = UDim2.new(1, -6, 0.5, 0)
+tokenCloseBtn.Size = UDim2.fromOffset(20, 20)
+tokenCloseBtn.BackgroundColor3 = CORES.fundo3
+tokenCloseBtn.BackgroundTransparency = 0.4
+tokenCloseBtn.BorderSizePixel = 0
+tokenCloseBtn.Text = "X"
+tokenCloseBtn.Font = Enum.Font.GothamBlack
+tokenCloseBtn.TextSize = 10
+tokenCloseBtn.TextColor3 = CORES.subtexto
+tokenCloseBtn.AutoButtonColor = false
+tokenCloseBtn.ZIndex = 43
+tokenCloseBtn.Parent = tokenHeader
+corner(tokenCloseBtn, 6)
+
+local tokenDivider = Instance.new("Frame")
+tokenDivider.Size = UDim2.new(1, -20, 0, 1)
+tokenDivider.Position = UDim2.new(0, 10, 0, 30)
+tokenDivider.BackgroundColor3 = CORES.tokenBase
+tokenDivider.BackgroundTransparency = 0.8
+tokenDivider.BorderSizePixel = 0
+tokenDivider.ZIndex = 41
+tokenDivider.Parent = tokenPanel
+
+local tokenPriceLabel = Instance.new("TextLabel")
+tokenPriceLabel.BackgroundTransparency = 1
+tokenPriceLabel.Position = UDim2.fromOffset(14, 34)
+tokenPriceLabel.Size = UDim2.new(1, -28, 0, 26)
+tokenPriceLabel.Font = Enum.Font.GothamBlack
+tokenPriceLabel.TextSize = 22
+tokenPriceLabel.TextXAlignment = Enum.TextXAlignment.Left
+tokenPriceLabel.TextColor3 = CORES.tokenBase
+tokenPriceLabel.Text = ("$%d"):format(TOKEN.BASE)
+tokenPriceLabel.ZIndex = 42
+tokenPriceLabel.Parent = tokenPanel
+
+local tokenTimerLabel = Instance.new("TextLabel")
+tokenTimerLabel.BackgroundTransparency = 1
+tokenTimerLabel.Position = UDim2.fromOffset(14, 60)
+tokenTimerLabel.Size = UDim2.new(1, -28, 0, 12)
+tokenTimerLabel.Font = Enum.Font.GothamMedium
+tokenTimerLabel.TextSize = 9
+tokenTimerLabel.TextXAlignment = Enum.TextXAlignment.Left
+tokenTimerLabel.TextColor3 = CORES.subtexto
+tokenTimerLabel.Text = "Muda em --s"
+tokenTimerLabel.ZIndex = 42
+tokenTimerLabel.Parent = tokenPanel
+
+local tokenProgressBg = Instance.new("Frame")
+tokenProgressBg.Position = UDim2.fromOffset(14, 78)
+tokenProgressBg.Size = UDim2.new(1, -28, 0, 4)
+tokenProgressBg.BackgroundColor3 = Color3.fromRGB(35, 38, 55)
+tokenProgressBg.BorderSizePixel = 0
+tokenProgressBg.ZIndex = 42
+tokenProgressBg.Parent = tokenPanel
+corner(tokenProgressBg, 4)
+
+local tokenProgressBar = Instance.new("Frame")
+tokenProgressBar.Size = UDim2.new(1, 0, 1, 0)
+tokenProgressBar.BackgroundColor3 = CORES.tokenBase
+tokenProgressBar.BorderSizePixel = 0
+tokenProgressBar.ZIndex = 43
+tokenProgressBar.Parent = tokenProgressBg
+corner(tokenProgressBar, 4)
+gradient(tokenProgressBar, CORES.tokenBase, CORES.destaque, 0)
+
+local tokenRange = Instance.new("TextLabel")
+tokenRange.BackgroundTransparency = 1
+tokenRange.Position = UDim2.fromOffset(14, 86)
+tokenRange.Size = UDim2.new(1, -28, 0, 12)
+tokenRange.Font = Enum.Font.Code
+tokenRange.TextSize = 9
+tokenRange.TextXAlignment = Enum.TextXAlignment.Left
+tokenRange.TextColor3 = CORES.subtexto
+tokenRange.Text = ("min $%d  ·  base $%d  ·  spike $%d  ·  max $%d"):format(
+    TOKEN.MIN, TOKEN.BASE, TOKEN.SPIKE, TOKEN.MAX
+)
+tokenRange.ZIndex = 42
+tokenRange.Parent = tokenPanel
+
+makeDraggable(tokenHeader, tokenPanel, "tokenPos")
+
+-- =========================================================
+-- LÓGICA DO TOKEN
+-- =========================================================
+local lastTokenPrice = TOKEN.BASE
+
+local function tokenBounce()
+    local up = TweenService:Create(tokenPanel, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Size = UDim2.fromOffset(TOKEN_W + 8, TOKEN_H + 3),
+    })
+    local down = TweenService:Create(tokenPanel, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.fromOffset(TOKEN_W, TOKEN_H),
+    })
+    up:Play()
+    up.Completed:Connect(function() down:Play() end)
+end
+
+local function applyTokenTheme(color, strokeT, badgeText)
+    local ti = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    TweenService:Create(tokenProgressBar, ti, {BackgroundColor3 = color}):Play()
+    TweenService:Create(tokenBadge, ti, {BackgroundColor3 = color}):Play()
+    TweenService:Create(tokenPriceLabel, ti, {TextColor3 = color}):Play()
+    TweenService:Create(tokenAccent, ti, {BackgroundColor3 = color}):Play()
+
+    tokenBadge.Text = badgeText
+end
+
+local function updateTokenDisplay()
+    local price = math.floor(readNumber(workspace:GetAttribute("TokenPrice"), TOKEN.BASE))
+
+    if price ~= lastTokenPrice then
+        tokenBounce()
+    end
+
+    local trend = ""
+    if price > lastTokenPrice then trend = " ▲"
+    elseif price < lastTokenPrice then trend = " ▼" end
+
+    tokenPriceLabel.Text = ("$%d%s"):format(price, trend)
+
+    if price >= TOKEN.MAX then
+        applyTokenTheme(CORES.tokenMax, 0.15, "⚡ MÁXIMO")
+    elseif price >= TOKEN.SPIKE then
+        applyTokenTheme(CORES.tokenSpike, 0.35, "🔥 ALTO")
+    elseif price <= TOKEN.MIN then
+        applyTokenTheme(CORES.tokenMin, 0.35, "📉 MÍNIMO")
+    else
+        applyTokenTheme(CORES.tokenBase, 0.4, "NORMAL")
+    end
+
+    lastTokenPrice = price
+end
+
+local function setTokenVisible(v)
+    tokenPanelVisible = v
+    tokenPanel.Visible = v
+    openTokenBtn.Text = v and "💰 OCULTAR TOKEN" or "💰 MOSTRAR TOKEN"
+end
+
+openTokenBtn.Activated:Connect(function()
+    setTokenVisible(not tokenPanelVisible)
+end)
+
+openTokenBtn.MouseEnter:Connect(function()
+    tween(openTokenBtn, {BackgroundTransparency = 0.55}, 0.15)
+end)
+
+openTokenBtn.MouseLeave:Connect(function()
+    tween(openTokenBtn, {BackgroundTransparency = 0.85}, 0.15)
+end)
+
+tokenCloseBtn.Activated:Connect(function()
+    setTokenVisible(false)
+end)
+
+tokenCloseBtn.MouseEnter:Connect(function()
+    tween(tokenCloseBtn, {
+        BackgroundColor3 = CORES.danger,
+        TextColor3 = Color3.new(1, 1, 1),
+        BackgroundTransparency = 0.3,
+    }, 0.15)
+end)
+
+tokenCloseBtn.MouseLeave:Connect(function()
+    tween(tokenCloseBtn, {
+        BackgroundColor3 = CORES.fundo3,
+        TextColor3 = CORES.subtexto,
+        BackgroundTransparency = 0.4,
+    }, 0.15)
+end)
+
+-- Loop do timer + atualização do token
+task.spawn(function()
+    while gui.Parent do
+        if tokenPanelVisible then
+            local now = os.time()
+            local secondsLeft = TOKEN.EPOCH - (now % TOKEN.EPOCH)
+            local progress = secondsLeft / TOKEN.EPOCH
+
+            tokenTimerLabel.Text = ("Muda em %ds"):format(secondsLeft)
+
+            TweenService:Create(tokenProgressBar, TweenInfo.new(0.5, Enum.EasingStyle.Linear), {
+                Size = UDim2.new(progress, 0, 1, 0),
+            }):Play()
+
+            updateTokenDisplay()
+        end
+        task.wait(0.5)
+    end
+end)
+
+workspace:GetAttributeChangedSignal("TokenPrice"):Connect(function()
+    if tokenPanelVisible then
+        updateTokenDisplay()
+    end
+end)
 
 -- =========================================================
 -- LISTA SEPARADA / INDEPENDENTE
@@ -1125,7 +1461,6 @@ footerCamBtn.Parent = listFooter
 corner(footerCamBtn, 6)
 stroke(footerCamBtn, CORES.secundaria, 1, 0.4)
 
--- Lista arrastável pelo header dela
 makeDraggable(listHeader, playersList, "listPos")
 
 -- =========================================================
@@ -1558,12 +1893,11 @@ stopBtn.MouseLeave:Connect(function()
 end)
 
 -- =========================================================
--- ABRIR/FECHAR LISTA — janela independente (painel NÃO fecha)
+-- ABRIR/FECHAR LISTA — janela independente
 -- =========================================================
 local function computeListPos()
     if STATE.listPos then return STATE.listPos end
 
-    -- Encosta na ESQUERDA do painel, mesma linha de topo.
     local panelLeftEdge = panel.Position.X.Offset - PANEL_W
 
     return UDim2.new(
@@ -1703,6 +2037,8 @@ UserInputService.InputBegan:Connect(function(input, processed)
         else
             openPlayerList()
         end
+    elseif input.KeyCode == CONFIG.TokenToggleKey then
+        setTokenVisible(not tokenPanelVisible)
     end
 end)
 
@@ -1807,8 +2143,9 @@ end)
 
 updateUI()
 updatePlayerList()
+updateTokenDisplay()
 
-print("[SamMods] v8.7 carregado com sucesso!")
+print("[SamMods] v8.8 carregado com sucesso!")
 
 script.Destroying:Connect(function()
     introAlive = false
