@@ -1,7 +1,7 @@
--- SamMods Auto Defender · v8.5
--- Lista independente + painel arrastável + intro dinâmica
+-- SamMods Auto Defender · v8.6
+-- Lista independente (não fecha painel) + defesa com retry + debug
 
-print("[SamMods] Carregando v8.5...")
+print("[SamMods] Carregando v8.6...")
 
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -175,16 +175,6 @@ local function followThief(thief)
     return true
 end
 
-local function fireMelee(thief)
-    if not thief or not MeleeHit:IsA("RemoteEvent") then
-        return false
-    end
-
-    return pcall(function()
-        MeleeHit:FireServer(thief)
-    end)
-end
-
 local function stopDefense(clearAttempt)
     releaseFromThief()
     currentThief = nil
@@ -195,24 +185,49 @@ local function stopDefense(clearAttempt)
     end
 end
 
+-- =========================================================
+-- DEFESA — com retry, logs e fallback de argumento
+-- =========================================================
+local function fireMelee(thief)
+    if not thief then return false end
+
+    local char = thief.Character
+    local hum  = char and char:FindFirstChildOfClass("Humanoid")
+
+    -- Testa as variantes mais comuns. Se teu jogo usar uma específica,
+    -- deixa só ela depois de identificar qual dispara o golpe.
+    local tentativas = {
+        function() MeleeHit:FireServer(char)  end,
+        function() MeleeHit:FireServer(hum)   end,
+        function() MeleeHit:FireServer(thief) end,
+        function() MeleeHit:FireServer()      end,
+    }
+
+    for i, fn in ipairs(tentativas) do
+        local ok, err = pcall(fn)
+        if ok then
+            print(("[SamMods] MeleeFire variante %d OK"):format(i))
+            return true
+        else
+            warn(("[SamMods] MeleeFire variante %d falhou: %s"):format(i, tostring(err)))
+        end
+    end
+    return false
+end
+
 local function oneAttempt(thief)
-    if not enabled or not robberyActive or not thief or batAttemptedThisRobbery then
-        return
-    end
+    if not enabled or not robberyActive or not thief then return end
+    if thief.Parent ~= Players or not getRoot(thief) then return end
 
-    if thief.Parent ~= Players or not getRoot(thief) then
-        return
-    end
-
-    batAttemptedThisRobbery = true
+    print("[SamMods] oneAttempt em", thief.Name)
 
     if not equipBat() then
-        batAttemptedThisRobbery = false
+        warn("[SamMods] equipBat falhou — confira CONFIG.ToolName =", CONFIG.ToolName)
         return
     end
 
     if not followThief(thief) then
-        batAttemptedThisRobbery = false
+        warn("[SamMods] followThief falhou — root do alvo sumiu?")
         unequipBat()
         return
     end
@@ -224,10 +239,7 @@ local function oneAttempt(thief)
         and currentThief == thief
         and (os.clock() - started) < CONFIG.AttemptDuration do
 
-        if not getRoot(thief) then
-            break
-        end
-
+        if not getRoot(thief) then break end
         fireMelee(thief)
         task.wait(CONFIG.MeleeInterval)
     end
@@ -235,27 +247,27 @@ local function oneAttempt(thief)
     releaseFromThief()
     unequipBat()
 
-    if updateUI then
-        updateUI()
-    end
+    -- Marca pra UI mostrar "golpe feito", mas NÃO bloqueia retry.
+    batAttemptedThisRobbery = true
+
+    if updateUI then updateUI() end
 end
 
 local function startDefenseLoop()
-    if defenseThread
-        or not enabled
-        or not robberyActive
-        or not currentThief
-        or batAttemptedThisRobbery then
+    if defenseThread or not enabled or not robberyActive or not currentThief then
         return
     end
 
     defenseThread = task.spawn(function()
-        oneAttempt(currentThief)
-        defenseThread = nil
-
-        if updateUI then
-            updateUI()
+        -- Loop com retry — insiste enquanto o assalto estiver rolando.
+        while enabled and robberyActive and currentThief do
+            oneAttempt(currentThief)
+            if not (enabled and robberyActive and currentThief) then break end
+            task.wait(CONFIG.RetryDelay)
         end
+
+        defenseThread = nil
+        if updateUI then updateUI() end
     end)
 end
 
@@ -407,9 +419,6 @@ local function createIntro()
     local old = PlayerGui:FindFirstChild("SamModsIntro")
     if old then old:Destroy() end
 
-    -- INTRO NOVA: "NEON CORE BOOT"
-    -- Em vez de repetir a intro anterior, esta usa um túnel de energia,
-    -- scanner circular, módulos entrando pelas laterais e logo montando no centro.
     local intro = Instance.new("ScreenGui")
     intro.Name = "SamModsIntro"
     intro.ResetOnSpawn = false
@@ -432,7 +441,6 @@ local function createIntro()
     bgGrad.Rotation = 35
     bgGrad.Parent = bg
 
-    -- Linhas diagonais de fundo
     for i = -12, 18 do
         local line = Instance.new("Frame")
         line.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -445,7 +453,6 @@ local function createIntro()
         line.Parent = bg
     end
 
-    -- Túnel de quadrados: sensação de avanço para o núcleo
     local tunnel = Instance.new("Frame")
     tunnel.AnchorPoint = Vector2.new(0.5, 0.5)
     tunnel.Position = UDim2.fromScale(0.5, 0.46)
@@ -472,7 +479,6 @@ local function createIntro()
         table.insert(tunnelItems, sq)
     end
 
-    -- Núcleo central
     local core = Instance.new("Frame")
     core.AnchorPoint = Vector2.new(0.5, 0.5)
     core.Position = UDim2.fromScale(0.5, 0.46)
@@ -510,7 +516,6 @@ local function createIntro()
     shieldGlow.Transparency = 0.15
     shieldGlow.Parent = shield
 
-    -- Scanner horizontal atravessando o núcleo
     local scanner = Instance.new("Frame")
     scanner.AnchorPoint = Vector2.new(0.5, 0.5)
     scanner.Position = UDim2.fromScale(0.5, 0.46)
@@ -520,7 +525,6 @@ local function createIntro()
     scanner.BorderSizePixel = 0
     scanner.Parent = bg
 
-    -- Pequenos módulos laterais
     local modules = {}
     local moduleTexts = {"CORE", "LINK", "GUARD", "SYNC"}
     for i, txt in ipairs(moduleTexts) do
@@ -617,7 +621,6 @@ local function createIntro()
     status.TextTransparency = 1
     status.Parent = bg
 
-    -- Partículas que atravessam a tela
     local particleAlive = true
     task.spawn(function()
         local rng = Random.new()
@@ -645,7 +648,6 @@ local function createIntro()
         end
     end)
 
-    -- Entrada dos elementos
     local fadeIn = TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
     TweenService:Create(core, fadeIn, {BackgroundTransparency = 0.05}):Play()
     TweenService:Create(shield, fadeIn, {TextTransparency = 0}):Play()
@@ -660,7 +662,6 @@ local function createIntro()
         TweenService:Create(item.label, fadeIn, {TextTransparency = 0}):Play()
     end
 
-    -- Túnel avança em pulsos; cada quadro nasce grande e fecha no núcleo.
     for i, sq in ipairs(tunnelItems) do
         task.delay(i * 0.045, function()
             if not sq.Parent then return end
@@ -691,7 +692,6 @@ local function createIntro()
         task.wait(0.38)
     end
 
-    -- Pulsação final do núcleo
     for _ = 1, 2 do
         TweenService:Create(core, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {Size = UDim2.fromOffset(100, 100)}):Play()
         TweenService:Create(coreStroke, TweenInfo.new(0.18), {Transparency = 0}):Play()
@@ -962,11 +962,11 @@ openListBtn.Parent = body
 corner(openListBtn, 8)
 stroke(openListBtn, CORES.secundaria, 1, 0.6)
 
--- painel principal SEM bloqueio quando a lista estiver aberta
+-- Painel pode ser arrastado pelo header normalmente.
 makeDraggable(header, panel, "panelPos")
 
 -- =========================================================
--- LISTA SEPARADA / MOVÍVEL
+-- LISTA SEPARADA / MOVÍVEL (NÃO fecha o painel)
 -- =========================================================
 local LIST_W = 255
 local LIST_H = 305
@@ -1148,7 +1148,7 @@ footerCamBtn.Parent = listFooter
 corner(footerCamBtn, 6)
 stroke(footerCamBtn, CORES.secundaria, 1, 0.4)
 
--- A lista também fica independente e pode ser movida mesmo com o painel aberto.
+-- A lista também é arrastável pelo header dela.
 makeDraggable(listHeader, playersList, "listPos")
 
 -- =========================================================
@@ -1581,22 +1581,23 @@ stopBtn.MouseLeave:Connect(function()
 end)
 
 -- =========================================================
--- ABRIR/FECHAR LISTA
+-- ABRIR/FECHAR LISTA — janela independente, painel NÃO fecha
 -- =========================================================
-local function getDefaultListPosition()
-    local baseY = panel.Position.Y.Offset
-    local extra = minimized and COLLAPSED_H or EXPANDED_H
+local function computeListPos()
+    -- Se o user já arrastou a lista, respeita a posição dele.
+    if STATE.listPos then return STATE.listPos end
+
+    -- Senão: encosta na ESQUERDA do painel, mesma linha de topo.
+    -- Painel tem AnchorPoint (1,0), então Position.X.Offset já é a borda direita.
+    local panelLeftEdge = panel.Position.X.Offset - PANEL_W
 
     return UDim2.new(
         panel.Position.X.Scale,
-        panel.Position.X.Offset,
+        panelLeftEdge - (LIST_W + 8),
         panel.Position.Y.Scale,
-        baseY + extra + 8
+        panel.Position.Y.Offset
     )
 end
-
-local panelWasVisibleBeforeList = true
-local panelWasMinimizedBeforeList = false
 
 local function closePlayerList()
     playersListOpen = false
@@ -1613,38 +1614,19 @@ local function closePlayerList()
 
     openListBtn.Text = "👥 ABRIR LISTA"
 
-    if spectating then
-        stopSpectate()
-    end
-
+    if spectating then stopSpectate() end
     selectedPlayer = nil
-
-    -- Quando a lista fecha, o painel volta exatamente como estava.
-    panel.Visible = panelWasVisibleBeforeList
-    if panelWasVisibleBeforeList then
-        setMinimized(panelWasMinimizedBeforeList)
-    end
 end
 
 local function openPlayerList()
     playersListOpen = true
 
-    -- Guarda o estado do painel para restaurar ao fechar a lista.
-    panelWasVisibleBeforeList = panel.Visible
-    panelWasMinimizedBeforeList = minimized
+    -- Reposiciona a lista ao lado do painel (só se o user não tiver arrastado).
+    if not STATE.listPos then
+        STATE.listPos = computeListPos()
+    end
+    playersList.Position = STATE.listPos
 
-    -- A lista ocupa o lugar do painel, como no print:
-    -- painel some e somente a janela de jogadores fica na tela.
-    local listPos = STATE.listPos or UDim2.new(
-        panel.Position.X.Scale,
-        panel.Position.X.Offset,
-        panel.Position.Y.Scale,
-        panel.Position.Y.Offset
-    )
-    playersList.Position = listPos
-    STATE.listPos = listPos
-
-    panel.Visible = false
     playersList.Visible = true
     playersList.Size = UDim2.fromOffset(0, LIST_H)
 
@@ -1754,6 +1736,8 @@ end)
 -- HACKEVENT
 -- =========================================================
 HackEvent.OnClientEvent:Connect(function(data)
+    print("[SamMods][HackEvent]", typeof(data), data and data.kind, data and data.role)
+
     if typeof(data) ~= "table" then
         return
     end
@@ -1780,6 +1764,7 @@ HackEvent.OnClientEvent:Connect(function(data)
     if role == "victim" then
         local thief = resolveThief(data)
         if not thief then
+            warn("[SamMods] resolveThief retornou nil. Data:", data)
             return
         end
 
@@ -1852,7 +1837,7 @@ end)
 updateUI()
 updatePlayerList()
 
-print("[SamMods] v8.5 carregado com sucesso!")
+print("[SamMods] v8.6 carregado com sucesso!")
 
 script.Destroying:Connect(function()
     introAlive = false
