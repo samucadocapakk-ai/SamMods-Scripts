@@ -1,7 +1,5 @@
--- =========================================================
--- SamMods Auto Defender · v6
--- Lista separada · Sem duplicar topbar · Intro épica
--- =========================================================
+-- SamMods Auto Defender · v8.4
+print("[SamMods] Carregando...")
 
 local Players          = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -19,9 +17,6 @@ local MeleeHit  = Remotes:WaitForChild("MeleeHit")
 local Shared     = ReplicatedStorage:WaitForChild("Shared")
 local TopbarPlus = require(Shared:WaitForChild("TopbarPlus"))
 
--- =========================================================
--- CORES
--- =========================================================
 local CORES = {
     primaria   = Color3.fromRGB(0, 210, 255),
     secundaria = Color3.fromRGB(150, 90, 255),
@@ -48,25 +43,18 @@ local CONFIG = {
     ListToggleKey   = Enum.KeyCode.F7,
 }
 
--- =========================================================
--- ESTADO GLOBAL (reuso)
--- =========================================================
 _G.SamModsDefender = _G.SamModsDefender or {}
 local STATE = _G.SamModsDefender
 
--- ⚡ DESTRÓI topbar antigo pra não duplicar
 if STATE.icon then
     pcall(function() STATE.icon:destroy() end)
     STATE.icon = nil
 end
 
--- ⚡ Destrói GUI antiga mas guarda posições
 local oldGui = PlayerGui:FindFirstChild("SamModsAutoDefender")
 if oldGui then
     local oldPanel = oldGui:FindFirstChild("Panel")
     if oldPanel then STATE.panelPos = oldPanel.Position end
-    local oldList = oldGui:FindFirstChild("PlayersList")
-    if oldList then STATE.listPos = oldList.Position end
     oldGui:Destroy()
 end
 
@@ -78,6 +66,8 @@ local followConnection = nil
 local defenseThread    = nil
 local spectating       = nil
 local spectateConn     = nil
+local playersListOpen  = false
+local selectedPlayer   = nil
 
 -- =========================================================
 -- HELPERS PERSONAGEM
@@ -201,7 +191,7 @@ local END_KINDS = {
 }
 
 -- =========================================================
---  INTRO ÉPICA SAMMODS
+--  INTRO
 -- =========================================================
 local function playIntro()
     pcall(function()
@@ -222,116 +212,30 @@ local function playIntro()
     bg.BorderSizePixel = 0
     bg.Parent = intro
 
-    -- ============ FASE 1: MATRIX RAIN ============
-    local matrix = Instance.new("Frame")
-    matrix.Size = UDim2.fromScale(1, 1)
-    matrix.BackgroundTransparency = 1
-    matrix.Parent = bg
-
-    local matrixConn
-    local chars = {"S","A","M","M","O","D","S","0","1","2","3","4","5","6","7","8","9"}
-    local drops = {}
-
-    -- Cria colunas de matrix
-    local numCols = math.floor(workspace.CurrentCamera.ViewportSize.X / 14)
-    for i = 1, numCols do
-        local column = Instance.new("Frame")
-        column.BackgroundTransparency = 1
-        column.Position = UDim2.fromOffset((i - 1) * 14, 0)
-        column.Size = UDim2.fromOffset(14, workspace.CurrentCamera.ViewportSize.Y)
-        column.Parent = matrix
-
-        local colChars = {}
-        local numRows = math.floor(workspace.CurrentCamera.ViewportSize.Y / 16)
-        for j = 1, numRows do
-            local c = Instance.new("TextLabel")
-            c.BackgroundTransparency = 1
-            c.Position = UDim2.fromOffset(0, (j - 1) * 16)
-            c.Size = UDim2.fromOffset(14, 16)
-            c.Font = Enum.Font.Code
-            c.TextSize = 14
-            c.Text = chars[math.random(1, #chars)]
-            c.TextColor3 = CORES.primaria
-            c.TextTransparency = 1
-            c.Parent = column
-            table.insert(colChars, c)
-        end
-        table.insert(drops, {
-            chars = colChars,
-            head = math.random(-30, 0),
-            speed = math.random(18, 32) / 100,
-            col = column
-        })
-    end
-
-    matrixConn = RunService.RenderStepped:Connect(function(dt)
-        for _, drop in ipairs(drops) do
-            drop.head = drop.head + drop.speed * 60 * dt
-            for idx, c in ipairs(drop.chars) do
-                local dist = drop.head - idx
-                if dist >= 0 and dist < 12 then
-                    c.TextTransparency = 0.05 + dist * 0.08
-                    c.TextColor3 = CORES.primaria
-                elseif dist >= 12 and dist < 20 then
-                    c.TextTransparency = 0.55 + (dist - 12) * 0.05
-                    c.TextColor3 = CORES.primaria
-                else
-                    c.TextTransparency = 1
-                end
-                if math.random() < 0.02 then
-                    c.Text = chars[math.random(1, #chars)]
-                end
-            end
-            if drop.head > #drop.chars + 15 then
-                drop.head = math.random(-40, -10)
-                drop.speed = math.random(18, 32) / 100
-            end
-        end
-    end)
-
-    -- ============ FASE 2: GLITCH BARS ============
-    task.spawn(function()
-        task.wait(1.0)
-        for i = 1, 8 do
-            if not intro.Parent then return end
-            local bar = Instance.new("Frame")
-            bar.BackgroundColor3 = math.random() > 0.5 and CORES.primaria or CORES.secundaria
-            bar.BackgroundTransparency = 0.7
-            bar.BorderSizePixel = 0
-            bar.Size = UDim2.new(1, 0, 0, math.random(3, 12))
-            bar.Position = UDim2.new(0, 0, math.random(), 0)
-            bar.ZIndex = 10
-            bar.Parent = bg
-            local finalY = bar.Position
-            TweenService:Create(bar, TweenInfo.new(0.15), {
-                Position = UDim2.new(finalY.X.Scale + math.random(-0.3, 0.3), 0, finalY.Y.Scale, 0),
-                BackgroundTransparency = 1
-            }):Play()
-            task.delay(0.2, function() bar:Destroy() end)
-            task.wait(0.08)
-        end
-    end)
-
-    -- ============ FASE 3: HOLOGRAMA SAMMODS ============
-    task.wait(1.4)
+    local bgGrad = Instance.new("UIGradient")
+    bgGrad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(16, 10, 30)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(8, 6, 14)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(14, 10, 26)),
+    })
+    bgGrad.Rotation = 25
+    bgGrad.Parent = bg
 
     local center = Instance.new("Frame")
     center.AnchorPoint = Vector2.new(0.5, 0.5)
     center.Position = UDim2.fromScale(0.5, 0.5)
     center.Size = UDim2.fromOffset(560, 300)
     center.BackgroundTransparency = 1
-    center.ZIndex = 20
     center.Parent = bg
 
-    -- Glow atrás
     local glow = Instance.new("Frame")
     glow.AnchorPoint = Vector2.new(0.5, 0.5)
-    glow.Position = UDim2.new(0.5, 0, 0, 60)
-    glow.Size = UDim2.fromOffset(500, 160)
+    glow.Position = UDim2.new(0.5, 0, 0, 55)
+    glow.Size = UDim2.fromOffset(420, 130)
     glow.BackgroundColor3 = CORES.primaria
     glow.BackgroundTransparency = 1
     glow.BorderSizePixel = 0
-    glow.ZIndex = 19
+    glow.ZIndex = 0
     glow.Parent = center
     Instance.new("UICorner", glow).CornerRadius = UDim.new(1, 0)
     local gGrad = Instance.new("UIGradient")
@@ -339,18 +243,17 @@ local function playIntro()
     gGrad.Rotation = 45
     gGrad.Parent = glow
 
-    -- Texto SAMMODS com reveal
     local titulo = Instance.new("TextLabel")
     titulo.AnchorPoint = Vector2.new(0.5, 0.5)
     titulo.Position = UDim2.new(0.5, 0, 0, 50)
     titulo.Size = UDim2.new(1, 0, 0, 62)
     titulo.BackgroundTransparency = 1
     titulo.Font = Enum.Font.GothamBlack
-    titulo.TextSize = 58
+    titulo.TextSize = 56
     titulo.Text = "SAMMODS"
-    titulo.TextColor3 = CORES.primaria
+    titulo.TextColor3 = Color3.fromRGB(255, 255, 255)
     titulo.TextTransparency = 1
-    titulo.ZIndex = 21
+    titulo.ZIndex = 2
     titulo.Parent = center
 
     local tg = Instance.new("UIGradient")
@@ -361,73 +264,51 @@ local function playIntro()
     })
     tg.Parent = titulo
 
-    -- Scanline que passa pelo título
+    local tituloStroke = Instance.new("UIStroke")
+    tituloStroke.Color = CORES.primaria
+    tituloStroke.Thickness = 1.5
+    tituloStroke.Transparency = 0.4
+    tituloStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+    tituloStroke.Parent = titulo
+
     local scanline = Instance.new("Frame")
     scanline.AnchorPoint = Vector2.new(0.5, 0.5)
     scanline.Position = UDim2.new(0.5, 0, 0, 20)
-    scanline.Size = UDim2.new(1, 0, 0, 3)
+    scanline.Size = UDim2.new(1, 0, 0, 2)
     scanline.BackgroundColor3 = CORES.primaria
-    scanline.BackgroundTransparency = 0.3
+    scanline.BackgroundTransparency = 0.2
     scanline.BorderSizePixel = 0
-    scanline.ZIndex = 22
+    scanline.ZIndex = 3
     scanline.Parent = center
 
-    -- Sombra
-    local sombra = Instance.new("TextLabel")
-    sombra.AnchorPoint = Vector2.new(0.5, 0.5)
-    sombra.Position = UDim2.new(0.5, 0, 0, 53)
-    sombra.Size = UDim2.new(1, 0, 0, 62)
-    sombra.BackgroundTransparency = 1
-    sombra.Font = Enum.Font.GothamBlack
-    sombra.TextSize = 58
-    sombra.Text = "SAMMODS"
-    sombra.TextColor3 = CORES.secundaria
-    sombra.TextTransparency = 1
-    sombra.ZIndex = 20
-    sombra.Parent = center
-
-    -- Subtítulo
     local sub = Instance.new("TextLabel")
     sub.AnchorPoint = Vector2.new(0.5, 0.5)
     sub.Position = UDim2.new(0.5, 0, 0, 96)
     sub.Size = UDim2.new(1, 0, 0, 20)
     sub.BackgroundTransparency = 1
     sub.Font = Enum.Font.GothamBold
-    sub.TextSize = 14
+    sub.TextSize = 13
     sub.Text = "A U T O   D E F E N D E R"
     sub.TextColor3 = CORES.primaria
     sub.TextTransparency = 1
-    sub.ZIndex = 21
+    sub.ZIndex = 2
     sub.Parent = center
 
     local badge = Instance.new("TextLabel")
     badge.AnchorPoint = Vector2.new(0.5, 0.5)
     badge.Position = UDim2.new(0.5, 0, 0, 124)
-    badge.Size = UDim2.fromOffset(80, 18)
+    badge.Size = UDim2.fromOffset(80, 20)
     badge.BackgroundColor3 = CORES.secundaria
     badge.BackgroundTransparency = 1
     badge.Font = Enum.Font.GothamBold
     badge.TextSize = 10
-    badge.Text = "v6"
+    badge.Text = "v8.4"
     badge.TextColor3 = Color3.new(1, 1, 1)
     badge.TextTransparency = 1
-    badge.ZIndex = 21
+    badge.ZIndex = 2
     badge.Parent = center
     Instance.new("UICorner", badge).CornerRadius = UDim.new(1, 0)
 
-    -- Scanlines holográficas
-    for i = 0, 40 do
-        local line = Instance.new("Frame")
-        line.BackgroundColor3 = CORES.primaria
-        line.BackgroundTransparency = 0.92
-        line.BorderSizePixel = 0
-        line.Size = UDim2.new(1, 0, 0, 1)
-        line.Position = UDim2.new(0, 0, i / 40, 0)
-        line.ZIndex = 18
-        line.Parent = center
-    end
-
-    -- Barra de progresso
     local barBg = Instance.new("Frame")
     barBg.AnchorPoint = Vector2.new(0.5, 0.5)
     barBg.Position = UDim2.new(0.5, 0, 0, 200)
@@ -435,7 +316,7 @@ local function playIntro()
     barBg.BackgroundColor3 = Color3.fromRGB(28, 24, 40)
     barBg.BackgroundTransparency = 1
     barBg.BorderSizePixel = 0
-    barBg.ZIndex = 21
+    barBg.ZIndex = 2
     barBg.Parent = center
     Instance.new("UICorner", barBg).CornerRadius = UDim.new(1, 0)
 
@@ -444,6 +325,7 @@ local function playIntro()
     barFill.BackgroundColor3 = CORES.primaria
     barFill.BackgroundTransparency = 1
     barFill.BorderSizePixel = 0
+    barFill.ZIndex = 3
     barFill.Parent = barBg
     Instance.new("UICorner", barFill).CornerRadius = UDim.new(1, 0)
     local bfG = Instance.new("UIGradient")
@@ -464,7 +346,7 @@ local function playIntro()
     status.Text = "> inicializando kernel..."
     status.TextColor3 = CORES.primaria
     status.TextTransparency = 1
-    status.ZIndex = 21
+    status.ZIndex = 2
     status.Parent = center
 
     local rodape = Instance.new("TextLabel")
@@ -474,17 +356,16 @@ local function playIntro()
     rodape.BackgroundTransparency = 1
     rodape.Font = Enum.Font.Code
     rodape.TextSize = 11
-    rodape.Text = "SamMods  ·  v6  ·  Auto Defender"
+    rodape.Text = "SamMods  -  v8.4  -  Auto Defender"
     rodape.TextColor3 = Color3.fromRGB(110, 115, 135)
     rodape.TextTransparency = 1
-    rodape.ZIndex = 21
+    rodape.ZIndex = 2
     rodape.Parent = bg
 
-    -- Partículas ciano/roxo
     task.spawn(function()
         local rng = Random.new()
         while intro.Parent do
-            task.wait(rng:NextNumber(0.08, 0.2))
+            task.wait(rng:NextNumber(0.12, 0.28))
             pcall(function()
                 local p = Instance.new("Frame")
                 local size = rng:NextInteger(2, 6)
@@ -493,13 +374,13 @@ local function playIntro()
                 p.BackgroundColor3 = rng:NextNumber() > 0.5 and CORES.primaria or CORES.secundaria
                 p.BackgroundTransparency = 0.4
                 p.BorderSizePixel = 0
-                p.ZIndex = 15
+                p.ZIndex = 1
                 p.Parent = bg
                 Instance.new("UICorner", p).CornerRadius = UDim.new(1, 0)
                 local tw = TweenService:Create(p,
-                    TweenInfo.new(rng:NextNumber(3, 6), Enum.EasingStyle.Linear),
+                    TweenInfo.new(rng:NextNumber(2.5, 5), Enum.EasingStyle.Linear),
                     {
-                        Position = UDim2.new(p.Position.X.Scale + rng:NextNumber(-0.06, 0.06), 0, -0.05, 0),
+                        Position = UDim2.new(p.Position.X.Scale + rng:NextNumber(-0.05, 0.05), 0, -0.05, 0),
                         BackgroundTransparency = 1,
                     })
                 tw:Play()
@@ -508,56 +389,67 @@ local function playIntro()
         end
     end)
 
-    -- Fade in do holograma
-    local FI = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    TweenService:Create(glow, FI, { BackgroundTransparency = 0.8 }):Play()
+    local scanlineActive = true
+    task.spawn(function()
+        while scanlineActive and intro.Parent do
+            scanline.Position = UDim2.new(0.5, 0, 0, 20)
+            scanline.BackgroundTransparency = 0.2
+            TweenService:Create(scanline, TweenInfo.new(0.9, Enum.EasingStyle.Quad), {
+                Position = UDim2.new(0.5, 0, 0, 85),
+                BackgroundTransparency = 0.9
+            }):Play()
+            task.wait(1.0)
+        end
+    end)
+
+    local glowPulse = true
+    task.spawn(function()
+        while glowPulse and intro.Parent do
+            TweenService:Create(glow, TweenInfo.new(1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { BackgroundTransparency = 0.75 }):Play()
+            task.wait(1.2)
+            TweenService:Create(glow, TweenInfo.new(1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { BackgroundTransparency = 0.88 }):Play()
+            task.wait(1.2)
+        end
+    end)
+
+    local FI = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    TweenService:Create(glow, FI, { BackgroundTransparency = 0.85 }):Play()
     TweenService:Create(titulo, FI, { TextTransparency = 0 }):Play()
-    TweenService:Create(sombra, FI, { TextTransparency = 0.75 }):Play()
     TweenService:Create(sub, FI, { TextTransparency = 0 }):Play()
     TweenService:Create(badge, FI, { BackgroundTransparency = 0.2, TextTransparency = 0 }):Play()
     TweenService:Create(status, FI, { TextTransparency = 0 }):Play()
     TweenService:Create(rodape, FI, { TextTransparency = 0 }):Play()
     TweenService:Create(barBg, FI, { BackgroundTransparency = 0 }):Play()
-    TweenService:Create(barFill, FI, { TextTransparency = 0, BackgroundTransparency = 0 }):Play()
+    TweenService:Create(barFill, FI, { BackgroundTransparency = 0 }):Play()
 
-    -- Scanline animada pelo título
-    task.spawn(function()
-        while intro.Parent and bg.Parent do
-            scanline.Position = UDim2.new(0.5, 0, 0, 20)
-            TweenService:Create(scanline, TweenInfo.new(0.8), { Position = UDim2.new(0.5, 0, 0, 80) }):Play()
-            task.wait(0.9)
-        end
-    end)
+    task.wait(0.4)
 
-    -- Progresso com mensagens
-    task.spawn(function()
-        local steps = {
-            { 0.15, "> inicializando kernel..." },
-            { 0.35, "> carregando módulos SamMods..." },
-            { 0.55, "> conectando ao servidor..." },
-            { 0.75, "> montando interface..." },
-            { 0.92, "> preparando defesa automática..." },
-            { 1.00, "> pronto, chefe!" },
-        }
-        for _, step in ipairs(steps) do
-            if not intro.Parent then return end
-            TweenService:Create(barFill, TweenInfo.new(0.35, Enum.EasingStyle.Quad), { Size = UDim2.new(step[1], 0, 1, 0) }):Play()
-            TweenService:Create(status, TweenInfo.new(0.2), { TextTransparency = 1 }):Play()
-            task.wait(0.2)
-            status.Text = step[2]
-            TweenService:Create(status, TweenInfo.new(0.2), { TextTransparency = 0 }):Play()
-            task.wait(0.25)
-        end
-    end)
+    local steps = {
+        { 0.15, "> inicializando kernel..." },
+        { 0.35, "> carregando módulos SamMods..." },
+        { 0.55, "> conectando ao servidor..." },
+        { 0.75, "> montando interface..." },
+        { 0.92, "> preparando defesa automática..." },
+        { 1.00, "> pronto, chefe!" },
+    }
 
-    task.wait(3.0)
+    for _, step in ipairs(steps) do
+        if not intro.Parent then break end
+        TweenService:Create(barFill, TweenInfo.new(0.35, Enum.EasingStyle.Quad), {
+            Size = UDim2.new(step[1], 0, 1, 0)
+        }):Play()
+        status.Text = step[2]
+        task.wait(0.5)
+    end
 
-    -- Fade out geral
-    matrixConn:Disconnect()
-    local FO = TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+    task.wait(0.4)
+
+    scanlineActive = false
+    glowPulse = false
+
+    local FO = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
     TweenService:Create(bg, FO, { BackgroundTransparency = 1 }):Play()
     TweenService:Create(titulo, FO, { TextTransparency = 1 }):Play()
-    TweenService:Create(sombra, FO, { TextTransparency = 1 }):Play()
     TweenService:Create(sub, FO, { TextTransparency = 1 }):Play()
     TweenService:Create(badge, FO, { BackgroundTransparency = 1, TextTransparency = 1 }):Play()
     TweenService:Create(status, FO, { TextTransparency = 1 }):Play()
@@ -567,12 +459,6 @@ local function playIntro()
     TweenService:Create(glow, FO, { BackgroundTransparency = 1 }):Play()
     TweenService:Create(scanline, FO, { BackgroundTransparency = 1 }):Play()
 
-    for _, drop in ipairs(drops) do
-        for _, c in ipairs(drop.chars) do
-            TweenService:Create(c, FO, { TextTransparency = 1 }):Play()
-        end
-    end
-
     task.wait(0.8)
     if intro then intro:Destroy() end
 end
@@ -580,7 +466,7 @@ end
 task.spawn(playIntro)
 
 -- =========================================================
---  HOOK HACKEVENT
+--  HACKEVENT
 -- =========================================================
 HackEvent.OnClientEvent:Connect(function(data)
     if typeof(data) ~= "table" then return end
@@ -614,6 +500,7 @@ Players.PlayerRemoving:Connect(function(player)
     end
     if updatePlayerList then updatePlayerList() end
     if spectating == player then stopSpectate() end
+    if selectedPlayer == player then selectedPlayer = nil end
 end)
 
 Players.PlayerAdded:Connect(function()
@@ -657,10 +544,12 @@ local function tween(inst, props, time, style, dir)
     t:Play()
     return t
 end
-local function makeDraggable(handle, target, stateKey)
+
+local function makeDraggable(handle, target, stateKey, canDrag)
     local dragging = false
     local dragStart, startPos
     handle.InputBegan:Connect(function(input)
+        if canDrag and not canDrag() then return end
         if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
@@ -698,16 +587,16 @@ gui.DisplayOrder = 60
 gui.Parent = PlayerGui
 
 -- =========================================================
---  PAINEL PRINCIPAL
+--  PAINEL (canto superior direito)
 -- =========================================================
 local PANEL_W = 240
-local COLLAPSED_H = 42
-local EXPANDED_H = 180
+local COLLAPSED_H = 46
+local EXPANDED_H = 184
 
 local panel = Instance.new("Frame")
 panel.Name = "Panel"
 panel.AnchorPoint = Vector2.new(1, 0)
-panel.Position = STATE.panelPos or UDim2.new(1, -12, 0, 96)
+panel.Position = STATE.panelPos or UDim2.new(1, -12, 0, 12)
 panel.Size = UDim2.fromOffset(PANEL_W, COLLAPSED_H)
 panel.BackgroundColor3 = CORES.fundo
 panel.BorderSizePixel = 0
@@ -731,6 +620,7 @@ local accentBar = Instance.new("Frame")
 accentBar.Size = UDim2.new(1, 0, 0, 2)
 accentBar.BorderSizePixel = 0
 accentBar.BackgroundColor3 = CORES.primaria
+accentBar.ZIndex = 2
 accentBar.Parent = panel
 corner(accentBar, 14)
 gradient(accentBar, CORES.primaria, CORES.secundaria, 0)
@@ -740,13 +630,15 @@ header.Name = "Header"
 header.Size = UDim2.new(1, 0, 0, COLLAPSED_H)
 header.Position = UDim2.new(0, 0, 0, 2)
 header.BackgroundTransparency = 1
+header.ZIndex = 2
 header.Parent = panel
 
 local shieldIcon = Instance.new("Frame")
-shieldIcon.Position = UDim2.fromOffset(10, 10)
+shieldIcon.Position = UDim2.fromOffset(10, 12)
 shieldIcon.Size = UDim2.fromOffset(22, 22)
 shieldIcon.BackgroundColor3 = CORES.primaria
 shieldIcon.BorderSizePixel = 0
+shieldIcon.ZIndex = 3
 shieldIcon.Parent = header
 corner(shieldIcon, 7)
 gradient(shieldIcon, CORES.primaria, CORES.secundaria, 45)
@@ -758,36 +650,41 @@ shieldGlyph.Font = Enum.Font.GothamBlack
 shieldGlyph.TextSize = 12
 shieldGlyph.Text = "🛡"
 shieldGlyph.TextColor3 = Color3.new(1, 1, 1)
+shieldGlyph.ZIndex = 4
 shieldGlyph.Parent = shieldIcon
 
 local title = Instance.new("TextLabel")
 title.BackgroundTransparency = 1
-title.Position = UDim2.fromOffset(38, 7)
-title.Size = UDim2.new(1, -110, 0, 14)
+title.Position = UDim2.fromOffset(38, 9)
+title.Size = UDim2.new(1, -100, 0, 14)
 title.Font = Enum.Font.GothamBlack
 title.TextSize = 11
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextColor3 = CORES.texto
 title.Text = "SAMMODS"
+title.ZIndex = 3
 title.Parent = header
 
-local subtitle = Instance.new("TextLabel")
-subtitle.BackgroundTransparency = 1
-subtitle.Position = UDim2.fromOffset(38, 21)
-subtitle.Size = UDim2.new(1, -110, 0, 12)
-subtitle.Font = Enum.Font.GothamMedium
-subtitle.TextSize = 9
-subtitle.TextXAlignment = Enum.TextXAlignment.Left
-subtitle.TextColor3 = CORES.subtexto
-subtitle.Text = "Auto Defender v6"
-subtitle.Parent = header
+local subtitle = UDim.new and nil
+local subtitleLbl = Instance.new("TextLabel")
+subtitleLbl.BackgroundTransparency = 1
+subtitleLbl.Position = UDim2.fromOffset(38, 23)
+subtitleLbl.Size = UDim2.new(1, -100, 0, 12)
+subtitleLbl.Font = Enum.Font.GothamMedium
+subtitleLbl.TextSize = 9
+subtitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+subtitleLbl.TextColor3 = CORES.subtexto
+subtitleLbl.Text = "Auto Defender"
+subtitleLbl.ZIndex = 3
+subtitleLbl.Parent = header
 
 local statusDot = Instance.new("Frame")
 statusDot.AnchorPoint = Vector2.new(0, 0.5)
-statusDot.Position = UDim2.new(1, -86, 0.5, 0)
+statusDot.Position = UDim2.new(1, -74, 0.5, 0)
 statusDot.Size = UDim2.fromOffset(8, 8)
 statusDot.BackgroundColor3 = CORES.off
 statusDot.BorderSizePixel = 0
+statusDot.ZIndex = 3
 statusDot.Parent = header
 corner(statusDot, 4)
 
@@ -797,41 +694,46 @@ statusDotGlow.Transparency = 0.7
 statusDotGlow.Color = CORES.off
 statusDotGlow.Parent = statusDot
 
+-- ⚡ BOTÃO MINIMIZAR MAIOR E FÁCIL DE CLICAR
 local minimizeBtn = Instance.new("TextButton")
 minimizeBtn.Name = "Minimize"
 minimizeBtn.AnchorPoint = Vector2.new(1, 0.5)
-minimizeBtn.Position = UDim2.new(1, -8, 0.5, 0)
-minimizeBtn.Size = UDim2.fromOffset(22, 22)
-minimizeBtn.BackgroundColor3 = CORES.fundo2
-minimizeBtn.BackgroundTransparency = 0.5
+minimizeBtn.Position = UDim2.new(1, -6, 0.5, 0)
+minimizeBtn.Size = UDim2.fromOffset(30, 30)
+minimizeBtn.BackgroundColor3 = CORES.fundo3
+minimizeBtn.BackgroundTransparency = 0.3
 minimizeBtn.BorderSizePixel = 0
-minimizeBtn.Text = "➖"
-minimizeBtn.Font = Enum.Font.GothamBold
-minimizeBtn.TextSize = 12
-minimizeBtn.TextColor3 = CORES.subtexto
+minimizeBtn.Text = "-"
+minimizeBtn.Font = Enum.Font.GothamBlack
+minimizeBtn.TextSize = 20
+minimizeBtn.TextColor3 = CORES.primaria
 minimizeBtn.AutoButtonColor = false
+minimizeBtn.ZIndex = 3
 minimizeBtn.Parent = header
-corner(minimizeBtn, 6)
+corner(minimizeBtn, 8)
 
+-- ⚡ TOGGLE MAIOR E FÁCIL DE CLICAR
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Name = "Toggle"
 toggleBtn.AnchorPoint = Vector2.new(1, 0.5)
-toggleBtn.Position = UDim2.new(1, -36, 0.5, 0)
-toggleBtn.Size = UDim2.fromOffset(38, 20)
+toggleBtn.Position = UDim2.new(1, -42, 0.5, 0)
+toggleBtn.Size = UDim2.fromOffset(52, 26)
 toggleBtn.BackgroundColor3 = CORES.off
 toggleBtn.BorderSizePixel = 0
 toggleBtn.Text = ""
 toggleBtn.AutoButtonColor = false
+toggleBtn.ZIndex = 3
 toggleBtn.Parent = header
-corner(toggleBtn, 10)
+corner(toggleBtn, 13)
 
 local toggleKnob = Instance.new("Frame")
-toggleKnob.Size = UDim2.fromOffset(14, 14)
-toggleKnob.Position = UDim2.new(0, 3, 0.5, -7)
+toggleKnob.Size = UDim2.fromOffset(20, 20)
+toggleKnob.Position = UDim2.new(0, 3, 0.5, -10)
 toggleKnob.BackgroundColor3 = Color3.new(1, 1, 1)
 toggleKnob.BorderSizePixel = 0
+toggleKnob.ZIndex = 4
 toggleKnob.Parent = toggleBtn
-corner(toggleKnob, 7)
+corner(toggleKnob, 10)
 
 local body = Instance.new("Frame")
 body.Name = "Body"
@@ -839,6 +741,7 @@ body.Position = UDim2.fromOffset(0, COLLAPSED_H)
 body.Size = UDim2.new(1, 0, 0, EXPANDED_H - COLLAPSED_H)
 body.BackgroundTransparency = 1
 body.ClipsDescendants = true
+body.ZIndex = 2
 body.Parent = panel
 
 local divider = Instance.new("Frame")
@@ -847,6 +750,7 @@ divider.Position = UDim2.new(0, 10, 0, 0)
 divider.BackgroundColor3 = CORES.primaria
 divider.BackgroundTransparency = 0.85
 divider.BorderSizePixel = 0
+divider.ZIndex = 3
 divider.Parent = body
 
 local infoCard = Instance.new("Frame")
@@ -855,6 +759,7 @@ infoCard.Size = UDim2.new(1, -20, 0, 42)
 infoCard.BackgroundColor3 = CORES.fundo2
 infoCard.BackgroundTransparency = 0.3
 infoCard.BorderSizePixel = 0
+infoCard.ZIndex = 3
 infoCard.Parent = body
 corner(infoCard, 8)
 
@@ -867,6 +772,7 @@ infoStatusLabel.TextSize = 10
 infoStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
 infoStatusLabel.TextColor3 = CORES.subtexto
 infoStatusLabel.Text = "⭕ DESATIVADO"
+infoStatusLabel.ZIndex = 4
 infoStatusLabel.Parent = infoCard
 
 local infoTargetLabel = Instance.new("TextLabel")
@@ -879,12 +785,13 @@ infoTargetLabel.TextXAlignment = Enum.TextXAlignment.Left
 infoTargetLabel.TextTruncate = Enum.TextTruncate.AtEnd
 infoTargetLabel.TextColor3 = CORES.subtexto
 infoTargetLabel.Text = "🎯 ALVO: nenhum"
+infoTargetLabel.ZIndex = 4
 infoTargetLabel.Parent = infoCard
 
 local stopBtn = Instance.new("TextButton")
 stopBtn.Name = "StopBtn"
 stopBtn.Position = UDim2.fromOffset(10, 58)
-stopBtn.Size = UDim2.new(1, -20, 0, 26)
+stopBtn.Size = UDim2.new(1, -20, 0, 28)
 stopBtn.BackgroundColor3 = CORES.danger
 stopBtn.BackgroundTransparency = 0.85
 stopBtn.BorderSizePixel = 0
@@ -893,46 +800,50 @@ stopBtn.Font = Enum.Font.GothamBold
 stopBtn.TextSize = 10
 stopBtn.TextColor3 = CORES.danger
 stopBtn.AutoButtonColor = false
+stopBtn.ZIndex = 3
 stopBtn.Parent = body
 corner(stopBtn, 8)
 stroke(stopBtn, CORES.danger, 1, 0.6)
 
 local openListBtn = Instance.new("TextButton")
 openListBtn.Name = "OpenListBtn"
-openListBtn.Position = UDim2.fromOffset(10, 92)
-openListBtn.Size = UDim2.new(1, -20, 0, 26)
+openListBtn.Position = UDim2.fromOffset(10, 94)
+openListBtn.Size = UDim2.new(1, -20, 0, 28)
 openListBtn.BackgroundColor3 = CORES.secundaria
 openListBtn.BackgroundTransparency = 0.85
 openListBtn.BorderSizePixel = 0
-openListBtn.Text = "👥 ABRIR LISTA DE JOGADORES"
+openListBtn.Text = "👥 ABRIR LISTA"
 openListBtn.Font = Enum.Font.GothamBold
 openListBtn.TextSize = 10
 openListBtn.TextColor3 = CORES.secundaria
 openListBtn.AutoButtonColor = false
+openListBtn.ZIndex = 3
 openListBtn.Parent = body
 corner(openListBtn, 8)
 stroke(openListBtn, CORES.secundaria, 1, 0.6)
 
-makeDraggable(header, panel, "panelPos")
+makeDraggable(header, panel, "panelPos", function() return not playersListOpen end)
 
 -- =========================================================
---  LISTA DE JOGADORES (JANELA SEPARADA)
+--  LISTA DE JOGADORES (com botões fixos embaixo)
 -- =========================================================
 local LIST_W = 300
-local LIST_H = 420
+local LIST_H = 400
+local FOOTER_H = 42
 
 local playersList = Instance.new("Frame")
 playersList.Name = "PlayersList"
 playersList.AnchorPoint = Vector2.new(1, 0)
-playersList.Position = STATE.listPos or UDim2.new(1, -12, 0, 96 + EXPANDED_H + 10)
+playersList.Position = STATE.listPos or UDim2.new(1, -12, 0, 12)
 playersList.Size = UDim2.fromOffset(LIST_W, LIST_H)
 playersList.BackgroundColor3 = CORES.fundo
 playersList.BorderSizePixel = 0
 playersList.ClipsDescendants = true
 playersList.Visible = false
+playersList.ZIndex = 50
 playersList.Parent = gui
 corner(playersList, 14)
-stroke(playersList, CORES.secundaria, 1, 0.55)
+stroke(playersList, CORES.secundaria, 1.5, 0.4)
 
 local listGrad = Instance.new("UIGradient")
 listGrad.Color = ColorSequence.new(CORES.fundo2, CORES.fundo)
@@ -943,56 +854,64 @@ local listAccent = Instance.new("Frame")
 listAccent.Size = UDim2.new(1, 0, 0, 2)
 listAccent.BorderSizePixel = 0
 listAccent.BackgroundColor3 = CORES.secundaria
+listAccent.ZIndex = 51
 listAccent.Parent = playersList
 corner(listAccent, 14)
 gradient(listAccent, CORES.secundaria, CORES.destaque, 0)
 
+-- HEADER DA LISTA
 local listHeader = Instance.new("Frame")
 listHeader.Name = "Header"
-listHeader.Size = UDim2.new(1, 0, 0, 40)
+listHeader.Size = UDim2.new(1, 0, 0, 38)
 listHeader.Position = UDim2.new(0, 0, 0, 2)
 listHeader.BackgroundTransparency = 1
+listHeader.ZIndex = 51
 listHeader.Parent = playersList
 
 local listTitle = Instance.new("TextLabel")
 listTitle.BackgroundTransparency = 1
 listTitle.Position = UDim2.fromOffset(14, 0)
-listTitle.Size = UDim2.new(1, -60, 1, 0)
+listTitle.Size = UDim2.new(1, -50, 1, 0)
 listTitle.Font = Enum.Font.GothamBlack
 listTitle.TextSize = 12
 listTitle.TextXAlignment = Enum.TextXAlignment.Left
 listTitle.TextColor3 = CORES.texto
 listTitle.Text = "👥 JOGADORES"
+listTitle.ZIndex = 52
 listTitle.Parent = listHeader
 
+-- ⚡ BOTÃO FECHAR = letra X
 local listCloseBtn = Instance.new("TextButton")
 listCloseBtn.Name = "CloseBtn"
 listCloseBtn.AnchorPoint = Vector2.new(1, 0.5)
 listCloseBtn.Position = UDim2.new(1, -8, 0.5, 0)
-listCloseBtn.Size = UDim2.fromOffset(24, 24)
+listCloseBtn.Size = UDim2.fromOffset(28, 28)
 listCloseBtn.BackgroundColor3 = CORES.fundo3
 listCloseBtn.BackgroundTransparency = 0.4
 listCloseBtn.BorderSizePixel = 0
-listCloseBtn.Text = "✕"
-listCloseBtn.Font = Enum.Font.GothamBold
-listCloseBtn.TextSize = 12
+listCloseBtn.Text = "X"
+listCloseBtn.Font = Enum.Font.GothamBlack
+listCloseBtn.TextSize = 14
 listCloseBtn.TextColor3 = CORES.subtexto
 listCloseBtn.AutoButtonColor = false
+listCloseBtn.ZIndex = 52
 listCloseBtn.Parent = listHeader
-corner(listCloseBtn, 6)
+corner(listCloseBtn, 8)
 
 local listDivider = Instance.new("Frame")
 listDivider.Size = UDim2.new(1, -20, 0, 1)
-listDivider.Position = UDim2.new(0, 10, 0, 42)
+listDivider.Position = UDim2.new(0, 10, 0, 40)
 listDivider.BackgroundColor3 = CORES.secundaria
 listDivider.BackgroundTransparency = 0.8
 listDivider.BorderSizePixel = 0
+listDivider.ZIndex = 51
 listDivider.Parent = playersList
 
+-- SEARCH
 local searchBox = Instance.new("TextBox")
 searchBox.Name = "SearchBox"
-searchBox.Position = UDim2.fromOffset(12, 50)
-searchBox.Size = UDim2.new(1, -24, 0, 30)
+searchBox.Position = UDim2.fromOffset(10, 46)
+searchBox.Size = UDim2.new(1, -20, 0, 28)
 searchBox.BackgroundColor3 = CORES.fundo2
 searchBox.BackgroundTransparency = 0.2
 searchBox.BorderSizePixel = 0
@@ -1004,45 +923,106 @@ searchBox.TextSize = 11
 searchBox.TextColor3 = CORES.texto
 searchBox.TextXAlignment = Enum.TextXAlignment.Left
 searchBox.ClearTextOnFocus = false
+searchBox.ZIndex = 51
 searchBox.Parent = playersList
 corner(searchBox, 8)
 stroke(searchBox, CORES.secundaria, 1, 0.75)
 
 local sPad = Instance.new("UIPadding")
-sPad.PaddingLeft = UDim.new(0, 12)
-sPad.PaddingRight = UDim.new(0, 12)
+sPad.PaddingLeft = UDim.new(0, 10)
+sPad.PaddingRight = UDim.new(0, 10)
 sPad.Parent = searchBox
 
+-- SCROLL DA LISTA (agora tem espaço pro footer)
 local listScroll = Instance.new("ScrollingFrame")
-listScroll.Position = UDim2.fromOffset(12, 88)
-listScroll.Size = UDim2.new(1, -24, 1, -100)
+listScroll.Position = UDim2.fromOffset(10, 80)
+listScroll.Size = UDim2.new(1, -20, 1, -(80 + FOOTER_H + 10))
 listScroll.BackgroundColor3 = CORES.fundo2
 listScroll.BackgroundTransparency = 0.5
 listScroll.BorderSizePixel = 0
-listScroll.ScrollBarThickness = 4
+listScroll.ScrollBarThickness = 3
 listScroll.ScrollBarImageColor3 = CORES.primaria
 listScroll.ScrollBarImageTransparency = 0.3
 listScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 listScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+listScroll.ZIndex = 51
 listScroll.Parent = playersList
 corner(listScroll, 8)
 
 local listLayout = Instance.new("UIListLayout")
-listLayout.Padding = UDim.new(0, 4)
+listLayout.Padding = UDim.new(0, 3)
 listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 listLayout.Parent = listScroll
 
 local listPad = Instance.new("UIPadding")
-listPad.PaddingLeft = UDim.new(0, 6)
-listPad.PaddingRight = UDim.new(0, 6)
-listPad.PaddingTop = UDim.new(0, 6)
-listPad.PaddingBottom = UDim.new(0, 6)
+listPad.PaddingLeft = UDim.new(0, 4)
+listPad.PaddingRight = UDim.new(0, 4)
+listPad.PaddingTop = UDim.new(0, 4)
+listPad.PaddingBottom = UDim.new(0, 4)
 listPad.Parent = listScroll
 
-makeDraggable(listHeader, playersList, "listPos")
+-- ⚡ FOOTER FIXO COM BOTÕES TP E CAM (sempre visível)
+local listFooter = Instance.new("Frame")
+listFooter.Name = "Footer"
+listFooter.AnchorPoint = Vector2.new(0, 1)
+listFooter.Position = UDim2.new(0, 0, 1, 0)
+listFooter.Size = UDim2.new(1, 0, 0, FOOTER_H)
+listFooter.BackgroundColor3 = CORES.fundo2
+listFooter.BackgroundTransparency = 0.2
+listFooter.BorderSizePixel = 0
+listFooter.ZIndex = 51
+listFooter.Parent = playersList
+
+local footerDivider = Instance.new("Frame")
+footerDivider.Size = UDim2.new(1, 0, 0, 1)
+footerDivider.Position = UDim2.new(0, 0, 0, 0)
+footerDivider.BackgroundColor3 = CORES.secundaria
+footerDivider.BackgroundTransparency = 0.75
+footerDivider.BorderSizePixel = 0
+footerDivider.ZIndex = 52
+footerDivider.Parent = listFooter
+
+-- Botão TP fixo
+local footerTpBtn = Instance.new("TextButton")
+footerTpBtn.Name = "FooterTP"
+footerTpBtn.Position = UDim2.fromOffset(10, 8)
+footerTpBtn.Size = UDim2.new(0.5, -14, 0, 26)
+footerTpBtn.BackgroundColor3 = CORES.primaria
+footerTpBtn.BackgroundTransparency = 0.75
+footerTpBtn.BorderSizePixel = 0
+footerTpBtn.Text = "🎯 TP"
+footerTpBtn.Font = Enum.Font.GothamBold
+footerTpBtn.TextSize = 11
+footerTpBtn.TextColor3 = CORES.primaria
+footerTpBtn.AutoButtonColor = false
+footerTpBtn.ZIndex = 52
+footerTpBtn.Parent = listFooter
+corner(footerTpBtn, 6)
+stroke(footerTpBtn, CORES.primaria, 1, 0.4)
+
+-- Botão CAM fixo
+local footerCamBtn = Instance.new("TextButton")
+footerCamBtn.Name = "FooterCAM"
+footerCamBtn.AnchorPoint = Vector2.new(1, 0)
+footerCamBtn.Position = UDim2.new(1, -10, 0, 8)
+footerCamBtn.Size = UDim2.new(0.5, -14, 0, 26)
+footerCamBtn.BackgroundColor3 = CORES.secundaria
+footerCamBtn.BackgroundTransparency = 0.75
+footerCamBtn.BorderSizePixel = 0
+footerCamBtn.Text = "👁 CAM"
+footerCamBtn.Font = Enum.Font.GothamBold
+footerCamBtn.TextSize = 11
+footerCamBtn.TextColor3 = CORES.secundaria
+footerCamBtn.AutoButtonColor = false
+footerCamBtn.ZIndex = 52
+footerCamBtn.Parent = listFooter
+corner(footerCamBtn, 6)
+stroke(footerCamBtn, CORES.secundaria, 1, 0.4)
+
+makeDraggable(listHeader, playersList, nil)
 
 -- =========================================================
---  TP E CÂMERA
+--  TP E CAM
 -- =========================================================
 local function teleportToPlayer(target)
     if not target or target == LocalPlayer then return false end
@@ -1079,6 +1059,42 @@ local function startSpectate(target)
     updatePlayerList()
 end
 
+-- Ações dos botões fixos
+footerTpBtn.MouseEnter:Connect(function() tween(footerTpBtn, { BackgroundTransparency = 0.4 }, 0.15) end)
+footerTpBtn.MouseLeave:Connect(function() tween(footerTpBtn, { BackgroundTransparency = 0.75 }, 0.15) end)
+footerTpBtn.MouseButton1Click:Connect(function()
+    if not selectedPlayer then
+        tween(footerTpBtn, { BackgroundColor3 = CORES.danger, TextColor3 = CORES.danger }, 0.1)
+        task.delay(0.3, function()
+            tween(footerTpBtn, { BackgroundColor3 = CORES.primaria, TextColor3 = CORES.primaria }, 0.25)
+        end)
+        return
+    end
+    if teleportToPlayer(selectedPlayer) then
+        tween(footerTpBtn, { BackgroundColor3 = CORES.on, TextColor3 = CORES.on, BackgroundTransparency = 0.3 }, 0.1)
+        task.delay(0.4, function()
+            tween(footerTpBtn, { BackgroundColor3 = CORES.primaria, TextColor3 = CORES.primaria, BackgroundTransparency = 0.75 }, 0.25)
+        end)
+    end
+end)
+
+footerCamBtn.MouseEnter:Connect(function() tween(footerCamBtn, { BackgroundTransparency = 0.4 }, 0.15) end)
+footerCamBtn.MouseLeave:Connect(function() tween(footerCamBtn, { BackgroundTransparency = 0.75 }, 0.15) end)
+footerCamBtn.MouseButton1Click:Connect(function()
+    if not selectedPlayer then
+        tween(footerCamBtn, { BackgroundColor3 = CORES.danger, TextColor3 = CORES.danger }, 0.1)
+        task.delay(0.3, function()
+            tween(footerCamBtn, { BackgroundColor3 = CORES.secundaria, TextColor3 = CORES.secundaria }, 0.25)
+        end)
+        return
+    end
+    if spectating == selectedPlayer then
+        stopSpectate()
+    else
+        startSpectate(selectedPlayer)
+    end
+end)
+
 -- =========================================================
 --  UPDATE LISTA
 -- =========================================================
@@ -1093,14 +1109,14 @@ function updatePlayerList()
     local others = {}
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LocalPlayer then
-            local dn = p.DisplayName:lower()
-            local un = p.Name:lower()
-            if searchTerm == "" or dn:find(searchTerm) or un:find(searchTerm) then
+            local dn = string.lower(p.DisplayName)
+            local un = string.lower(p.Name)
+            if searchTerm == "" or string.find(dn, searchTerm, 1, true) or string.find(un, searchTerm, 1, true) then
                 table.insert(others, p)
             end
         end
     end
-    table.sort(others, function(a, b) return a.DisplayName:lower() < b.DisplayName:lower() end)
+    table.sort(others, function(a, b) return string.lower(a.DisplayName) < string.lower(b.DisplayName) end)
 
     listTitle.Text = "👥 JOGADORES (" .. #others .. ")"
 
@@ -1113,125 +1129,103 @@ function updatePlayerList()
         empty.TextColor3 = CORES.subtexto
         empty.Text = "Nenhum jogador"
         empty.LayoutOrder = 1
+        empty.ZIndex = 52
         empty.Parent = listScroll
         return
     end
 
     for i, plr in ipairs(others) do
+        local isSelected = (selectedPlayer == plr)
         local isSpectating = (spectating == plr)
 
-        local row = Instance.new("Frame")
+        local row = Instance.new("TextButton")
         row.Name = "Player_" .. plr.Name
-        row.Size = UDim2.new(1, 0, 0, 54)
-        row.BackgroundColor3 = isSpectating and CORES.secundaria or CORES.fundo
-        row.BackgroundTransparency = isSpectating and 0.75 or 0.3
+        row.Size = UDim2.new(1, 0, 0, 48)
+        row.BackgroundColor3 = isSelected and CORES.primaria or (isSpectating and CORES.secundaria or CORES.fundo)
+        row.BackgroundTransparency = isSelected and 0.75 or (isSpectating and 0.8 or 0.3)
         row.BorderSizePixel = 0
         row.LayoutOrder = i
+        row.ZIndex = 52
+        row.Text = ""
+        row.AutoButtonColor = false
         row.Parent = listScroll
-        corner(row, 8)
+        corner(row, 6)
+
+        if isSelected then
+            stroke(row, CORES.primaria, 1.5, 0.3)
+        end
 
         local avatar = Instance.new("ImageLabel")
-        avatar.Position = UDim2.fromOffset(6, 6)
-        avatar.Size = UDim2.fromOffset(42, 42)
+        avatar.Position = UDim2.fromOffset(5, 5)
+        avatar.Size = UDim2.fromOffset(38, 38)
         avatar.BackgroundColor3 = CORES.fundo3
         avatar.BorderSizePixel = 0
         avatar.Image = "rbxthumb://type=AvatarHeadShot&id=" .. plr.UserId .. "&w=60&h=60"
+        avatar.ZIndex = 53
         avatar.Parent = row
-        corner(avatar, 10)
+        corner(avatar, 9)
 
         local nameLabel = Instance.new("TextLabel")
         nameLabel.BackgroundTransparency = 1
-        nameLabel.Position = UDim2.fromOffset(54, 8)
-        nameLabel.Size = UDim2.new(1, -100, 0, 16)
+        nameLabel.Position = UDim2.fromOffset(50, 6)
+        nameLabel.Size = UDim2.new(1, -58, 0, 16)
         nameLabel.Font = Enum.Font.GothamBold
         nameLabel.TextSize = 11
         nameLabel.TextXAlignment = Enum.TextXAlignment.Left
         nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
         nameLabel.TextColor3 = CORES.texto
         nameLabel.Text = plr.DisplayName
+        nameLabel.ZIndex = 53
         nameLabel.Parent = row
 
         local userLabel = Instance.new("TextLabel")
         userLabel.BackgroundTransparency = 1
-        userLabel.Position = UDim2.fromOffset(54, 26)
-        userLabel.Size = UDim2.new(1, -100, 0, 14)
+        userLabel.Position = UDim2.fromOffset(50, 24)
+        userLabel.Size = UDim2.new(1, -58, 0, 14)
         userLabel.Font = Enum.Font.Gotham
         userLabel.TextSize = 9
         userLabel.TextXAlignment = Enum.TextXAlignment.Left
         userLabel.TextTruncate = Enum.TextTruncate.AtEnd
         userLabel.TextColor3 = CORES.subtexto
         userLabel.Text = "@" .. plr.Name
+        userLabel.ZIndex = 53
         userLabel.Parent = row
 
-        local tpBtn = Instance.new("TextButton")
-        tpBtn.Name = "TPButton"
-        tpBtn.AnchorPoint = Vector2.new(1, 0.5)
-        tpBtn.Position = UDim2.new(1, -6, 0.5, -12)
-        tpBtn.Size = UDim2.fromOffset(44, 20)
-        tpBtn.BackgroundColor3 = CORES.primaria
-        tpBtn.BackgroundTransparency = 0.82
-        tpBtn.BorderSizePixel = 0
-        tpBtn.Text = "🎯 TP"
-        tpBtn.Font = Enum.Font.GothamBold
-        tpBtn.TextSize = 9
-        tpBtn.TextColor3 = CORES.primaria
-        tpBtn.AutoButtonColor = false
-        tpBtn.Parent = row
-        corner(tpBtn, 5)
-        stroke(tpBtn, CORES.primaria, 1, 0.55)
+        if isSpectating then
+            local spectLbl = Instance.new("TextLabel")
+            spectLbl.BackgroundTransparency = 1
+            spectLbl.AnchorPoint = Vector2.new(1, 0.5)
+            spectLbl.Position = UDim2.new(1, -8, 0.5, 0)
+            spectLbl.Size = UDim2.fromOffset(50, 16)
+            spectLbl.Font = Enum.Font.GothamBold
+            spectLbl.TextSize = 9
+            spectLbl.TextXAlignment = Enum.TextXAlignment.Right
+            spectLbl.TextColor3 = CORES.on
+            spectLbl.Text = "👁 ON"
+            spectLbl.ZIndex = 53
+            spectLbl.Parent = row
+        end
 
-        local verBtn = Instance.new("TextButton")
-        verBtn.Name = "VerButton"
-        verBtn.AnchorPoint = Vector2.new(1, 0.5)
-        verBtn.Position = UDim2.new(1, -6, 0.5, 12)
-        verBtn.Size = UDim2.fromOffset(44, 20)
-        verBtn.BackgroundColor3 = isSpectating and CORES.on or CORES.secundaria
-        verBtn.BackgroundTransparency = isSpectating and 0.55 or 0.82
-        verBtn.BorderSizePixel = 0
-        verBtn.Text = isSpectating and "⏹ ver" or "👁 ver"
-        verBtn.Font = Enum.Font.GothamBold
-        verBtn.TextSize = 9
-        verBtn.TextColor3 = isSpectating and CORES.on or CORES.secundaria
-        verBtn.AutoButtonColor = false
-        verBtn.Parent = row
-        corner(verBtn, 5)
-        stroke(verBtn, isSpectating and CORES.on or CORES.secundaria, 1, 0.55)
-
-        tpBtn.MouseEnter:Connect(function() tween(tpBtn, { BackgroundTransparency = 0.5 }, 0.15) end)
-        tpBtn.MouseLeave:Connect(function() tween(tpBtn, { BackgroundTransparency = 0.82 }, 0.15) end)
-        tpBtn.MouseButton1Click:Connect(function()
-            if teleportToPlayer(plr) then
-                tween(tpBtn, { BackgroundColor3 = CORES.on, TextColor3 = CORES.on, BackgroundTransparency = 0.4 }, 0.1)
-                task.delay(0.4, function()
-                    tween(tpBtn, { BackgroundColor3 = CORES.primaria, TextColor3 = CORES.primaria, BackgroundTransparency = 0.82 }, 0.25)
-                end)
+        row.MouseButton1Click:Connect(function()
+            if selectedPlayer == plr then
+                selectedPlayer = nil
+            else
+                selectedPlayer = plr
             end
-        end)
-
-        verBtn.MouseEnter:Connect(function() tween(verBtn, { BackgroundTransparency = 0.5 }, 0.15) end)
-        verBtn.MouseLeave:Connect(function()
-            tween(verBtn, { BackgroundTransparency = isSpectating and 0.55 or 0.82 }, 0.15)
-        end)
-        verBtn.MouseButton1Click:Connect(function()
-            if spectating == plr then stopSpectate() else startSpectate(plr) end
+            updatePlayerList()
         end)
     end
 end
 
 searchBox:GetPropertyChangedSignal("Text"):Connect(function()
-    searchTerm = searchBox.Text:lower()
+    searchTerm = string.lower(searchBox.Text)
     updatePlayerList()
 end)
 
--- =========================================================
---  ESTADO
--- =========================================================
 local pulseThread = nil
-
 local function stopPulse()
     if pulseThread then task.cancel(pulseThread) pulseThread = nil end
 end
-
 local function startPulse()
     stopPulse()
     pulseThread = task.spawn(function()
@@ -1247,7 +1241,7 @@ end
 function updateUI()
     if enabled then
         tween(toggleBtn, { BackgroundColor3 = CORES.on }, 0.2)
-        tween(toggleKnob, { Position = UDim2.new(1, -17, 0.5, -7) }, 0.2, Enum.EasingStyle.Back)
+        tween(toggleKnob, { Position = UDim2.new(1, -23, 0.5, -10) }, 0.2, Enum.EasingStyle.Back)
         if robberyActive and batAttemptedThisRobbery then
             infoStatusLabel.Text = "⚔ GOLPE FEITO"
             tween(infoStatusLabel, { TextColor3 = CORES.idle }, 0.2)
@@ -1269,7 +1263,7 @@ function updateUI()
         end
     else
         tween(toggleBtn, { BackgroundColor3 = CORES.off }, 0.2)
-        tween(toggleKnob, { Position = UDim2.new(0, 3, 0.5, -7) }, 0.2, Enum.EasingStyle.Back)
+        tween(toggleKnob, { Position = UDim2.new(0, 3, 0.5, -10) }, 0.2, Enum.EasingStyle.Back)
         infoStatusLabel.Text = "⭕ DESATIVADO"
         tween(infoStatusLabel, { TextColor3 = CORES.subtexto }, 0.2)
         statusDot.BackgroundColor3 = CORES.off
@@ -1298,9 +1292,6 @@ local function setEnabled(value)
     updateUI()
 end
 
--- =========================================================
---  BOTÕES
--- =========================================================
 toggleBtn.MouseButton1Click:Connect(function() setEnabled(not enabled) end)
 
 local minimized = false
@@ -1308,12 +1299,12 @@ local function setMinimized(state)
     minimized = state
     local targetH = state and COLLAPSED_H or EXPANDED_H
     tween(panel, { Size = UDim2.fromOffset(PANEL_W, targetH) }, 0.35, Enum.EasingStyle.Quint)
-    minimizeBtn.Text = state and "➕" or "➖"
+    minimizeBtn.Text = state and "+" or "-"
 end
 
 minimizeBtn.MouseButton1Click:Connect(function() setMinimized(not minimized) end)
-minimizeBtn.MouseEnter:Connect(function() tween(minimizeBtn, { BackgroundTransparency = 0.2, TextColor3 = CORES.primaria }, 0.15) end)
-minimizeBtn.MouseLeave:Connect(function() tween(minimizeBtn, { BackgroundTransparency = 0.5, TextColor3 = CORES.subtexto }, 0.15) end)
+minimizeBtn.MouseEnter:Connect(function() tween(minimizeBtn, { BackgroundTransparency = 0.1, TextColor3 = CORES.destaque, BackgroundColor3 = CORES.secundaria }, 0.15) end)
+minimizeBtn.MouseLeave:Connect(function() tween(minimizeBtn, { BackgroundTransparency = 0.3, TextColor3 = CORES.primaria, BackgroundColor3 = CORES.fundo3 }, 0.15) end)
 
 stopBtn.MouseButton1Click:Connect(function()
     tween(stopBtn, { BackgroundTransparency = 0.4 }, 0.08)
@@ -1327,35 +1318,40 @@ end)
 stopBtn.MouseEnter:Connect(function() tween(stopBtn, { BackgroundTransparency = 0.65 }, 0.15) end)
 stopBtn.MouseLeave:Connect(function() tween(stopBtn, { BackgroundTransparency = 0.85 }, 0.15) end)
 
--- Abrir lista
 openListBtn.MouseButton1Click:Connect(function()
     if playersList.Visible then
+        playersListOpen = false
         tween(playersList, { Size = UDim2.fromOffset(0, LIST_H) }, 0.25, Enum.EasingStyle.Quint)
         task.delay(0.28, function() playersList.Visible = false end)
-        openListBtn.Text = "👥 ABRIR LISTA DE JOGADORES"
+        openListBtn.Text = "👥 ABRIR LISTA"
         if spectating then stopSpectate() end
+        selectedPlayer = nil
     else
+        playersListOpen = true
+        playersList.Position = panel.Position
         playersList.Visible = true
         playersList.Size = UDim2.fromOffset(0, LIST_H)
         tween(playersList, { Size = UDim2.fromOffset(LIST_W, LIST_H) }, 0.35, Enum.EasingStyle.Back)
-        openListBtn.Text = "👥 FECHAR LISTA DE JOGADORES"
+        openListBtn.Text = "👥 FECHAR LISTA"
         updatePlayerList()
     end
 end)
 openListBtn.MouseEnter:Connect(function() tween(openListBtn, { BackgroundTransparency = 0.55 }, 0.15) end)
 openListBtn.MouseLeave:Connect(function() tween(openListBtn, { BackgroundTransparency = 0.85 }, 0.15) end)
 
-listCloseBtn.MouseEnter:Connect(function() tween(listCloseBtn, { BackgroundColor3 = CORES.danger, TextColor3 = CORES.danger, BackgroundTransparency = 0.6 }, 0.15) end)
+listCloseBtn.MouseEnter:Connect(function() tween(listCloseBtn, { BackgroundColor3 = CORES.danger, TextColor3 = Color3.new(1,1,1), BackgroundTransparency = 0.3 }, 0.15) end)
 listCloseBtn.MouseLeave:Connect(function() tween(listCloseBtn, { BackgroundColor3 = CORES.fundo3, TextColor3 = CORES.subtexto, BackgroundTransparency = 0.4 }, 0.15) end)
 listCloseBtn.MouseButton1Click:Connect(function()
+    playersListOpen = false
     tween(playersList, { Size = UDim2.fromOffset(0, LIST_H) }, 0.25, Enum.EasingStyle.Quint)
     task.delay(0.28, function() playersList.Visible = false end)
-    openListBtn.Text = "👥 ABRIR LISTA DE JOGADORES"
+    openListBtn.Text = "👥 ABRIR LISTA"
     if spectating then stopSpectate() end
+    selectedPlayer = nil
 end)
 
 -- =========================================================
---  TOPBAR — esconde/mostra tudo
+--  TOPBAR
 -- =========================================================
 local guiVisible = true
 
@@ -1383,9 +1379,18 @@ if defenderIconButton then
     lbl.Parent = defenderIconButton
 end
 
+pcall(function() defenderIcon:select() end)
+
 defenderIcon:bindEvent("clicked", function()
     guiVisible = not guiVisible
     gui.Enabled = guiVisible
+    if guiVisible then
+        pcall(function() defenderIcon:select() end)
+        defenderIcon:setCaption("SamMods ON")
+    else
+        pcall(function() defenderIcon:deselect() end)
+        defenderIcon:setCaption("SamMods OFF")
+    end
 end)
 
 -- =========================================================
@@ -1397,14 +1402,18 @@ UserInputService.InputBegan:Connect(function(input, processed)
         setEnabled(not enabled)
     elseif input.KeyCode == CONFIG.ListToggleKey then
         if playersList.Visible then
+            playersListOpen = false
             tween(playersList, { Size = UDim2.fromOffset(0, LIST_H) }, 0.25, Enum.EasingStyle.Quint)
             task.delay(0.28, function() playersList.Visible = false end)
-            openListBtn.Text = "👥 ABRIR LISTA DE JOGADORES"
+            openListBtn.Text = "👥 ABRIR LISTA"
+            selectedPlayer = nil
         else
+            playersListOpen = true
+            playersList.Position = panel.Position
             playersList.Visible = true
             playersList.Size = UDim2.fromOffset(0, LIST_H)
             tween(playersList, { Size = UDim2.fromOffset(LIST_W, LIST_H) }, 0.35, Enum.EasingStyle.Back)
-            openListBtn.Text = "👥 FECHAR LISTA DE JOGADORES"
+            openListBtn.Text = "👥 FECHAR LISTA"
             updatePlayerList()
         end
     end
@@ -1427,9 +1436,8 @@ end)
 updateUI()
 updatePlayerList()
 
--- =========================================================
---  CLEANUP
--- =========================================================
+print("[SamMods] Carregado com sucesso!")
+
 script.Destroying:Connect(function()
     enabled = false
     robberyActive = false
