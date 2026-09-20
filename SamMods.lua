@@ -1,7 +1,7 @@
--- SamMods Auto Defender · v8.6
--- Lista independente (não fecha painel) + defesa com retry + debug
+-- SamMods Auto Defender · v8.7
+-- Lista independente (não fecha o painel) + defesa com a lógica original que funcionava
 
-print("[SamMods] Carregando v8.6...")
+print("[SamMods] Carregando v8.7...")
 
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -186,48 +186,40 @@ local function stopDefense(clearAttempt)
 end
 
 -- =========================================================
--- DEFESA — com retry, logs e fallback de argumento
+-- DEFESA — lógica original que funcionava
 -- =========================================================
 local function fireMelee(thief)
-    if not thief then return false end
-
-    local char = thief.Character
-    local hum  = char and char:FindFirstChildOfClass("Humanoid")
-
-    -- Testa as variantes mais comuns. Se teu jogo usar uma específica,
-    -- deixa só ela depois de identificar qual dispara o golpe.
-    local tentativas = {
-        function() MeleeHit:FireServer(char)  end,
-        function() MeleeHit:FireServer(hum)   end,
-        function() MeleeHit:FireServer(thief) end,
-        function() MeleeHit:FireServer()      end,
-    }
-
-    for i, fn in ipairs(tentativas) do
-        local ok, err = pcall(fn)
-        if ok then
-            print(("[SamMods] MeleeFire variante %d OK"):format(i))
-            return true
-        else
-            warn(("[SamMods] MeleeFire variante %d falhou: %s"):format(i, tostring(err)))
-        end
+    if not thief or not MeleeHit:IsA("RemoteEvent") then
+        return false
     end
-    return false
+
+    return pcall(function()
+        MeleeHit:FireServer(thief)
+    end)
 end
 
 local function oneAttempt(thief)
-    if not enabled or not robberyActive or not thief then return end
-    if thief.Parent ~= Players or not getRoot(thief) then return end
+    if not enabled
+        or not robberyActive
+        or not thief
+        or batAttemptedThisRobbery then
+        return
+    end
 
-    print("[SamMods] oneAttempt em", thief.Name)
+    if thief.Parent ~= Players or not getRoot(thief) then
+        return
+    end
+
+    -- GUARD: só uma tentativa por roubo.
+    batAttemptedThisRobbery = true
 
     if not equipBat() then
-        warn("[SamMods] equipBat falhou — confira CONFIG.ToolName =", CONFIG.ToolName)
+        batAttemptedThisRobbery = false
         return
     end
 
     if not followThief(thief) then
-        warn("[SamMods] followThief falhou — root do alvo sumiu?")
+        batAttemptedThisRobbery = false
         unequipBat()
         return
     end
@@ -247,25 +239,20 @@ local function oneAttempt(thief)
     releaseFromThief()
     unequipBat()
 
-    -- Marca pra UI mostrar "golpe feito", mas NÃO bloqueia retry.
-    batAttemptedThisRobbery = true
-
     if updateUI then updateUI() end
 end
 
 local function startDefenseLoop()
-    if defenseThread or not enabled or not robberyActive or not currentThief then
+    if defenseThread
+        or not enabled
+        or not robberyActive
+        or not currentThief
+        or batAttemptedThisRobbery then
         return
     end
 
     defenseThread = task.spawn(function()
-        -- Loop com retry — insiste enquanto o assalto estiver rolando.
-        while enabled and robberyActive and currentThief do
-            oneAttempt(currentThief)
-            if not (enabled and robberyActive and currentThief) then break end
-            task.wait(CONFIG.RetryDelay)
-        end
-
+        oneAttempt(currentThief)
         defenseThread = nil
         if updateUI then updateUI() end
     end)
@@ -365,16 +352,12 @@ local function tween(inst, props, time, style, dir)
     return t
 end
 
-local function makeDraggable(handle, target, stateKey, canDrag)
+local function makeDraggable(handle, target, stateKey)
     local dragging = false
     local dragStart
     local startPos
 
     handle.InputBegan:Connect(function(input)
-        if canDrag and not canDrag() then
-            return
-        end
-
         if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
 
@@ -413,7 +396,7 @@ local function makeDraggable(handle, target, stateKey, canDrag)
 end
 
 -- =========================================================
--- INTRO NOVA / DINÂMICA
+-- INTRO
 -- =========================================================
 local function createIntro()
     local old = PlayerGui:FindFirstChild("SamModsIntro")
@@ -509,12 +492,6 @@ local function createIntro()
     shield.TextColor3 = Color3.new(1, 1, 1)
     shield.TextTransparency = 1
     shield.Parent = core
-
-    local shieldGlow = Instance.new("UIStroke")
-    shieldGlow.Color = CORES.primaria
-    shieldGlow.Thickness = 2
-    shieldGlow.Transparency = 0.15
-    shieldGlow.Parent = shield
 
     local scanner = Instance.new("Frame")
     scanner.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -962,11 +939,11 @@ openListBtn.Parent = body
 corner(openListBtn, 8)
 stroke(openListBtn, CORES.secundaria, 1, 0.6)
 
--- Painel pode ser arrastado pelo header normalmente.
+-- Painel arrastável pelo header
 makeDraggable(header, panel, "panelPos")
 
 -- =========================================================
--- LISTA SEPARADA / MOVÍVEL (NÃO fecha o painel)
+-- LISTA SEPARADA / INDEPENDENTE
 -- =========================================================
 local LIST_W = 255
 local LIST_H = 305
@@ -1148,7 +1125,7 @@ footerCamBtn.Parent = listFooter
 corner(footerCamBtn, 6)
 stroke(footerCamBtn, CORES.secundaria, 1, 0.4)
 
--- A lista também é arrastável pelo header dela.
+-- Lista arrastável pelo header dela
 makeDraggable(listHeader, playersList, "listPos")
 
 -- =========================================================
@@ -1507,7 +1484,7 @@ local function setEnabled(value)
 end
 
 -- =========================================================
--- MINIMIZAR / ABRIR PAINEL
+-- MINIMIZAR
 -- =========================================================
 local function setMinimized(state)
     minimized = state
@@ -1581,14 +1558,12 @@ stopBtn.MouseLeave:Connect(function()
 end)
 
 -- =========================================================
--- ABRIR/FECHAR LISTA — janela independente, painel NÃO fecha
+-- ABRIR/FECHAR LISTA — janela independente (painel NÃO fecha)
 -- =========================================================
 local function computeListPos()
-    -- Se o user já arrastou a lista, respeita a posição dele.
     if STATE.listPos then return STATE.listPos end
 
-    -- Senão: encosta na ESQUERDA do painel, mesma linha de topo.
-    -- Painel tem AnchorPoint (1,0), então Position.X.Offset já é a borda direita.
+    -- Encosta na ESQUERDA do painel, mesma linha de topo.
     local panelLeftEdge = panel.Position.X.Offset - PANEL_W
 
     return UDim2.new(
@@ -1621,7 +1596,6 @@ end
 local function openPlayerList()
     playersListOpen = true
 
-    -- Reposiciona a lista ao lado do painel (só se o user não tiver arrastado).
     if not STATE.listPos then
         STATE.listPos = computeListPos()
     end
@@ -1736,8 +1710,6 @@ end)
 -- HACKEVENT
 -- =========================================================
 HackEvent.OnClientEvent:Connect(function(data)
-    print("[SamMods][HackEvent]", typeof(data), data and data.kind, data and data.role)
-
     if typeof(data) ~= "table" then
         return
     end
@@ -1764,7 +1736,6 @@ HackEvent.OnClientEvent:Connect(function(data)
     if role == "victim" then
         local thief = resolveThief(data)
         if not thief then
-            warn("[SamMods] resolveThief retornou nil. Data:", data)
             return
         end
 
@@ -1837,7 +1808,7 @@ end)
 updateUI()
 updatePlayerList()
 
-print("[SamMods] v8.6 carregado com sucesso!")
+print("[SamMods] v8.7 carregado com sucesso!")
 
 script.Destroying:Connect(function()
     introAlive = false
